@@ -62,7 +62,10 @@ via service_role.
 ## Hard constraints — do not change without being asked
 
 - **No deletion.** The tool surfaces flagged posts only.
-- **Text only** (no media/image handling) in v1.
+- **Detection is text-only.** Images are *displayed* on post cards when present
+  (resolved via the X API `attachments.media_keys` expansion — no extra request).
+  No image analysis occurs; `nsfw`, `violence`, and all other categories classify
+  text only. Sample/dev-login data has no media.
 - **Secrets server-only.** OAuth tokens live encrypted in `connection_secrets`
   (service_role only), never returned to the client. `SUPABASE_SERVICE_ROLE_KEY` and
   `APP_ENCRYPTION_KEY` must never be `NEXT_PUBLIC_`.

@@ -89,6 +89,8 @@ export async function runAudit(args: RunAuditArgs): Promise<AuditSnapshot> {
       text: redactedText,
       postedAt: tweet.createdAt,
       source: "api",
+      mediaUrls: tweet.mediaUrls,
+      authorAvatarUrl: tweet.authorAvatarUrl,
       flags,
       decision: "pending",
       createdAt: now,

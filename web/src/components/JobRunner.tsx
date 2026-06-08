@@ -487,10 +487,43 @@ function FlaggedList({
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-xs text-zinc-400">
-                @{p.authorHandle} · {formatDate(p.postedAt)}
-              </p>
+              <div className="flex items-center gap-2">
+                {p.authorAvatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.authorAvatarUrl}
+                    alt={`@${p.authorHandle}`}
+                    className="h-6 w-6 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="h-6 w-6 shrink-0 rounded-full bg-zinc-200 dark:bg-zinc-700" />
+                )}
+                <span className="text-xs text-zinc-400">
+                  @{p.authorHandle} · {formatDate(p.postedAt)}
+                </span>
+              </div>
               <p className="mt-1 text-sm">{p.text}</p>
+              {p.mediaUrls && p.mediaUrls.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {p.mediaUrls.map((src, i) => (
+                    <a
+                      key={i}
+                      href={src}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={src}
+                        alt={`Media ${i + 1} from @${p.authorHandle}`}
+                        loading="lazy"
+                        className="h-40 max-w-xs rounded-lg border border-zinc-200 object-cover dark:border-zinc-700"
+                      />
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
             <TweetLink url={p.url} />
           </div>

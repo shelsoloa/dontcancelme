@@ -19,6 +19,14 @@ export type RawTweet = {
   authorHandle: string;
   /** Permalink for in-context review. */
   url: string;
+  /**
+   * Resolved image URLs for any media attached to the tweet (photos show
+   * their native URL; videos/GIFs use the static preview frame).
+   * Absent for sample tweets and posts with no media.
+   */
+  mediaUrls?: string[];
+  /** Author's profile image URL. Absent for sample tweets. */
+  authorAvatarUrl?: string;
 };
 
 const HANDLE = "you";

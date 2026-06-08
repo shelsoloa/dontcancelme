@@ -77,17 +77,53 @@ type XTweet = {
   created_at: string;
   author_id?: string;
   referenced_tweets?: Array<{ type: string; id: string }>;
+  attachments?: { media_keys?: string[] };
 };
-type XUser = { id: string; username: string };
+type XUser = { id: string; username: string; profile_image_url?: string };
+type XMedia = {
+  media_key: string;
+  type: string;
+  /** Present for `photo` type. */
+  url?: string;
+  /** Present for `video` / `animated_gif` — a static preview frame. */
+  preview_image_url?: string;
+};
+
+/**
+ * Resolve a tweet's media_keys to displayable image URLs.
+ * Photos use their native `url`; videos/GIFs use the static `preview_image_url`.
+ */
+function resolveMedia(
+  keys: string[] | undefined,
+  mediaByKey: Map<string, XMedia>,
+): string[] | undefined {
+  if (!keys?.length) return undefined;
+  const urls = keys
+    .map((k) => {
+      const m = mediaByKey.get(k);
+      if (!m) return undefined;
+      return m.type === "photo" ? m.url : m.preview_image_url;
+    })
+    .filter((u): u is string => !!u);
+  return urls.length ? urls : undefined;
+}
 
 /** Build a {@link RawTweet} from an X tweet given its author's handle. */
-function toRawTweet(t: XTweet, handle: string): RawTweet {
+function toRawTweet(
+  t: XTweet,
+  handle: string,
+  mediaByKey: Map<string, XMedia>,
+  usersById: Map<string, XUser>,
+): RawTweet {
+  const user = t.author_id ? usersById.get(t.author_id) : undefined;
   return {
     id: t.id,
     text: t.text,
     createdAt: t.created_at,
     authorHandle: handle,
     url: `https://x.com/${handle}/status/${t.id}`,
+    mediaUrls: resolveMedia(t.attachments?.media_keys, mediaByKey),
+    authorAvatarUrl: user?.profile_image_url,
   };
 }
 
@@ -97,7 +133,7 @@ const pageBudget = (cap: number) => Math.ceil(cap / 100) + 2;
 
 type TimelinePage = {
   data?: XTweet[];
-  includes?: { tweets?: XTweet[]; users?: XUser[] };
+  includes?: { tweets?: XTweet[]; users?: XUser[]; media?: XMedia[] };
   meta?: { next_token?: string };
 };
 
@@ -124,12 +160,16 @@ export async function listTimeline(
   for (let page = 0; page < maxPages && out.length < cap; page++) {
     const url = new URL(`${X_API}/users/${userId}/tweets`);
     url.searchParams.set("max_results", "100");
-    url.searchParams.set("tweet.fields", "created_at,referenced_tweets");
+    url.searchParams.set(
+      "tweet.fields",
+      "created_at,referenced_tweets,attachments,author_id",
+    );
     url.searchParams.set(
       "expansions",
-      "referenced_tweets.id,referenced_tweets.id.author_id",
+      "author_id,referenced_tweets.id,referenced_tweets.id.author_id,attachments.media_keys",
     );
-    url.searchParams.set("user.fields", "username");
+    url.searchParams.set("user.fields", "username,profile_image_url");
+    url.searchParams.set("media.fields", "url,preview_image_url,type");
     // If reposts aren't wanted, let X drop them server-side.
     if (!filter.includeReposts) url.searchParams.set("exclude", "retweets");
     if (paginationToken) url.searchParams.set("pagination_token", paginationToken);
@@ -142,6 +182,9 @@ export async function listTimeline(
       (json.includes?.tweets ?? []).map((t) => [t.id, t]),
     );
     const users = new Map((json.includes?.users ?? []).map((u) => [u.id, u]));
+    const mediaByKey = new Map(
+      (json.includes?.media ?? []).map((m) => [m.media_key, m]),
+    );
 
     for (const t of batch) {
       const retweet = t.referenced_tweets?.find((r) => r.type === "retweeted");
@@ -150,11 +193,13 @@ export async function listTimeline(
         const orig = refTweets.get(retweet.id);
         const author = orig?.author_id ? users.get(orig.author_id) : undefined;
         out.push(
-          orig ? toRawTweet(orig, author?.username ?? handle) : toRawTweet(t, handle),
+          orig
+            ? toRawTweet(orig, author?.username ?? handle, mediaByKey, users)
+            : toRawTweet(t, handle, mediaByKey, users),
         );
       } else {
         if (!filter.includePosts) continue;
-        out.push(toRawTweet(t, handle));
+        out.push(toRawTweet(t, handle, mediaByKey, users));
       }
       if (out.length >= cap) break;
     }
@@ -168,7 +213,7 @@ export async function listTimeline(
 
 type LikedPage = {
   data?: XTweet[];
-  includes?: { users?: XUser[] };
+  includes?: { users?: XUser[]; media?: XMedia[] };
   meta?: { next_token?: string };
 };
 
@@ -189,9 +234,10 @@ export async function listLikedTweets(
   for (let page = 0; page < maxPages && out.length < cap; page++) {
     const url = new URL(`${X_API}/users/${userId}/liked_tweets`);
     url.searchParams.set("max_results", "100");
-    url.searchParams.set("tweet.fields", "created_at");
-    url.searchParams.set("expansions", "author_id");
-    url.searchParams.set("user.fields", "username");
+    url.searchParams.set("tweet.fields", "created_at,attachments");
+    url.searchParams.set("expansions", "author_id,attachments.media_keys");
+    url.searchParams.set("user.fields", "username,profile_image_url");
+    url.searchParams.set("media.fields", "url,preview_image_url,type");
     if (paginationToken) url.searchParams.set("pagination_token", paginationToken);
 
     const json = (await xGet(url, accessToken)) as LikedPage;
@@ -199,11 +245,14 @@ export async function listLikedTweets(
     if (batch.length === 0) break;
 
     const users = new Map((json.includes?.users ?? []).map((u) => [u.id, u]));
+    const mediaByKey = new Map(
+      (json.includes?.media ?? []).map((m) => [m.media_key, m]),
+    );
     for (const t of batch) {
       const author = t.author_id ? users.get(t.author_id) : undefined;
       // Liked posts belong to other accounts; without a resolved handle we can't
       // build a correct permalink, so fall back to a generic one.
-      out.push(toRawTweet(t, author?.username ?? "i"));
+      out.push(toRawTweet(t, author?.username ?? "i", mediaByKey, users));
       if (out.length >= cap) break;
     }
 

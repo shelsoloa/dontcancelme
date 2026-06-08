@@ -20,8 +20,14 @@ export function parseSources(raw: unknown): AuditSource[] {
 /**
  * Billing estimate (pre-fetch, cheap): posts + reposts are both covered by X's
  * `tweet_count`; likes by `like_count`. Each capped at what we can actually pull.
+ * An optional `limit` caps the total (mirrors the per-job scan_limit column).
+ * Both the ingestion gate and the checkout route must call this identically.
  */
-export function estimateScannable(me: XMe, sources: AuditSource[]): number {
+export function estimateScannable(
+  me: XMe,
+  sources: AuditSource[],
+  limit?: number | null,
+): number {
   let n = 0;
   if (sources.includes("posts") || sources.includes("reposts")) {
     n += Math.min(me.tweetCount, MAX_FETCHABLE);
@@ -29,5 +35,5 @@ export function estimateScannable(me: XMe, sources: AuditSource[]): number {
   if (sources.includes("likes")) {
     n += Math.min(me.likeCount, MAX_FETCHABLE);
   }
-  return n;
+  return limit != null ? Math.min(n, limit) : n;
 }

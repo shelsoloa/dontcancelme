@@ -4,9 +4,9 @@
  * These mirror the database schema in
  * `supabase/migrations/<ts>_init_audit_schema.sql`. Pure types, no runtime deps.
  *
- * v1 is TEXT-ONLY: there is no media/image handling. Image-based detection and
- * media storage are deferred to a later version. The `nsfw` and `violence`
- * categories below classify *text* content only.
+ * Images are now *displayed* on post cards when present (resolved from the X API
+ * media expansion). Detection remains TEXT-ONLY — `nsfw` and `violence` categories
+ * classify *text* content only; no image analysis occurs.
  *
  * Secrets: OAuth tokens are intentionally NOT represented here. They live in a
  * server-only `connection_secrets` table that only the `service_role` can read,
@@ -116,6 +116,14 @@ export type AuditedPost = {
   /** When the post was published (ISO 8601). */
   postedAt: string;
   source: PostSource;
+  /**
+   * Resolved image URLs for any media on this post (photos native URL;
+   * videos/GIFs static preview frame). Absent when the post has no media
+   * or was produced from sample data.
+   */
+  mediaUrls?: string[];
+  /** Author's profile image URL. Absent for sample data. */
+  authorAvatarUrl?: string;
   flags: Flag[];
   decision: PostDecision;
   /** When the decision was last set (ISO 8601). */
