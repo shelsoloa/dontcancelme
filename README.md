@@ -16,8 +16,15 @@ Detected categories:
 
 - **Text only** — no media/image handling.
 - **Read-only** — the audit surfaces flagged posts for review; it does **not** delete anything.
+- **Sources:** each audit can scan the user's own **posts**, **liked posts**, and **reposts** — selected per audit on the intake form.
 - Tweet ingestion and detection currently run **client-side** (tweets are not persisted server-side yet).
-- **Billing:** the first 500 scannable tweets are free. Accounts with more than 500 tweets pay per 500-tweet block via a one-time Stripe Checkout before the scan runs.
+- **Billing:** the first 500 scannable tweets are free. Accounts whose selected sources exceed 500 tweets pay per 500-tweet block via a one-time Stripe Checkout before the scan runs.
+
+### X API cost
+
+This app reads **only the authenticated user's own resources** — their timeline (`GET /2/users/{id}/tweets`, which covers own posts *and* reposts) and their likes (`GET /2/users/{id}/liked_tweets`). Under X's pay-per-use model (default since **Feb 6, 2026**), and the pricing update effective **April 20, 2026**, both of these are **"Owned Reads" billed at $0.001 per resource** ($1 per 1,000). The higher **$0.005/resource** "standard read" rate applies only to reading *other* users' posts via lookup/search endpoints, which this app never calls. Usage is capped at ~2M reads/month, with a 24-hour UTC deduplication window (re-reading the same resource within a day is charged once).
+
+Sources: [X API pricing](https://docs.x.com/x-api/getting-started/pricing) · [Owned Reads now $0.001, effective April 20, 2026](https://devcommunity.x.com/t/x-api-pricing-update-owned-reads-now-0-001-other-changes-effective-april-20-2026/263025).
 
 ## Tech stack
 

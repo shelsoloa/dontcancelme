@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { RiskCategory } from "@/lib/audit/types";
+import { RiskCategory, ALL_AUDIT_SOURCES, type AuditSource } from "@/lib/audit/types";
 
 type ProfileInput = {
   age: number;
@@ -13,6 +13,7 @@ type ProfileInput = {
 
 export type StartAuditInput = {
   profile: ProfileInput;
+  sources: AuditSource[];
   categories: RiskCategory[];
 };
 
@@ -35,6 +36,12 @@ export async function startAudit(
   const categories = input.categories.filter((c) => valid.has(c));
   if (categories.length === 0) {
     return { error: "Select at least one category to audit." };
+  }
+
+  const validSources = new Set<string>(ALL_AUDIT_SOURCES);
+  const sources = input.sources.filter((s) => validSources.has(s));
+  if (sources.length === 0) {
+    return { error: "Select at least one thing to audit." };
   }
   if (!input.profile.gender || !Number.isFinite(input.profile.age)) {
     return { error: "Age and gender are required." };
@@ -67,6 +74,7 @@ export async function startAudit(
       user_id: user.id,
       platform: "x",
       enabled_categories: categories,
+      enabled_sources: sources,
       status: "queued",
       connection_id: connection?.id ?? null,
     })

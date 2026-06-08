@@ -1,10 +1,46 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getValidToken, resolveConnectionId } from "@/lib/x/oauth";
-import { getMe, listTweets, MAX_FETCHABLE, XApiError } from "@/lib/x/api";
+import {
+  getMe,
+  listTimeline,
+  listLikedTweets,
+  MAX_FETCHABLE,
+  XApiError,
+  type XMe,
+} from "@/lib/x/api";
 import { billableBlocks, FREE_TWEET_LIMIT } from "@/lib/billing";
+import { estimateScannable, parseSources } from "@/lib/x/scannable";
+import type { AuditSource } from "@/lib/audit/types";
+import type { RawTweet } from "@/lib/audit/sampleTweets";
 
 export const runtime = "nodejs";
+
+/** Fetch the selected sources and combine them, deduped by tweet id. */
+async function fetchSources(
+  token: string,
+  me: XMe,
+  sources: AuditSource[],
+): Promise<RawTweet[]> {
+  const includePosts = sources.includes("posts");
+  const includeReposts = sources.includes("reposts");
+  const all: RawTweet[] = [];
+
+  if (includePosts || includeReposts) {
+    all.push(
+      ...(await listTimeline(token, me.id, me.username, MAX_FETCHABLE, {
+        includePosts,
+        includeReposts,
+      })),
+    );
+  }
+  if (sources.includes("likes")) {
+    all.push(...(await listLikedTweets(token, me.id, MAX_FETCHABLE)));
+  }
+
+  const seen = new Set<string>();
+  return all.filter((t) => (seen.has(t.id) ? false : (seen.add(t.id), true)));
+}
 
 /**
  * Live tweet ingestion for an audit job. Resolves the user's X connection,
@@ -30,12 +66,14 @@ export async function GET(request: Request) {
   // RLS scopes this to the owner.
   const { data: job } = await supabase
     .from("audit_jobs")
-    .select("job_id, connection_id")
+    .select("job_id, connection_id, enabled_sources")
     .eq("job_id", jobId)
     .maybeSingle();
   if (!job) {
     return NextResponse.json({ error: "job not found" }, { status: 404 });
   }
+
+  const sources = parseSources(job.enabled_sources);
 
   const connectionId = await resolveConnectionId(user.id, job.connection_id);
   if (!connectionId) {
@@ -57,8 +95,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "x_api_error" }, { status });
   }
 
-  const cap = Math.min(me.tweetCount, MAX_FETCHABLE);
-  const blocks = billableBlocks(cap);
+  const scannable = estimateScannable(me, sources);
+  const blocks = billableBlocks(scannable);
 
   if (blocks > 0) {
     const { data: paid } = await supabase
@@ -71,7 +109,7 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           reason: "payment_required",
-          tweetCount: cap,
+          tweetCount: scannable,
           billableBlocks: blocks,
           freeLimit: FREE_TWEET_LIMIT,
         },
@@ -81,7 +119,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const tweets = await listTweets(token, me.id, me.username, cap);
+    const tweets = await fetchSources(token, me, sources);
     return NextResponse.json({ tweets });
   } catch {
     return NextResponse.json({ error: "x_api_error" }, { status: 502 });

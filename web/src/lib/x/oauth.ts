@@ -111,7 +111,7 @@ export async function captureXConnection(session: Session): Promise<void> {
         platform: "x",
         handle,
         platform_user_id: platformUserId,
-        scopes: ["users.read", "tweet.read", "offline.access"],
+        scopes: ["users.read", "tweet.read", "like.read", "offline.access"],
         status: "active",
       },
       { onConflict: "user_id,platform,platform_user_id" },

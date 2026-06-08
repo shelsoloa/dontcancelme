@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { RiskCategory, RISK_LABELS } from "@/lib/audit/types";
+import {
+  RiskCategory,
+  RISK_LABELS,
+  ALL_AUDIT_SOURCES,
+  AUDIT_SOURCE_LABELS,
+  type AuditSource,
+} from "@/lib/audit/types";
 import type { StartAuditInput } from "@/app/start/actions";
 
 const GENDERS = ["Woman", "Man", "Non-binary", "Other", "Prefer not to say"];
@@ -13,6 +19,7 @@ export type JobFormInitial = {
   race?: string;
   orientation?: string;
   country?: string;
+  sources?: AuditSource[];
   categories?: RiskCategory[];
 };
 
@@ -40,6 +47,9 @@ export function JobCreationForm({
   const [race, setRace] = useState(initial?.race ?? "");
   const [orientation, setOrientation] = useState(initial?.orientation ?? "");
   const [country, setCountry] = useState(initial?.country ?? "");
+  const [sources, setSources] = useState<AuditSource[]>(
+    initial?.sources ?? [...ALL_AUDIT_SOURCES],
+  );
   const [categories, setCategories] = useState<RiskCategory[]>(
     initial?.categories ?? [],
   );
@@ -57,6 +67,12 @@ export function JobCreationForm({
     );
   }
 
+  function toggleSource(s: AuditSource) {
+    setSources((prev) =>
+      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
+    );
+  }
+
   function buildPayload(): StartAuditInput | null {
     setLocalError(null);
     const ageNum = parseInt(age, 10);
@@ -66,6 +82,10 @@ export function JobCreationForm({
     }
     if (!gender) {
       setLocalError("Select a gender.");
+      return null;
+    }
+    if (sources.length === 0) {
+      setLocalError("Select at least one thing to audit.");
       return null;
     }
     if (categories.length === 0) {
@@ -80,6 +100,7 @@ export function JobCreationForm({
         sexualOrientation: orientation || undefined,
         country: country || undefined,
       },
+      sources,
       categories,
     };
   }
@@ -156,6 +177,28 @@ export function JobCreationForm({
               className={field}
             />
           </label>
+        </div>
+      </fieldset>
+
+      <fieldset className="space-y-3">
+        <legend className="text-sm font-medium text-zinc-500">
+          What should we audit?
+        </legend>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {ALL_AUDIT_SOURCES.map((s) => (
+            <label
+              key={s}
+              className="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
+            >
+              <input
+                type="checkbox"
+                checked={sources.includes(s)}
+                onChange={() => toggleSource(s)}
+                className="h-4 w-4"
+              />
+              {AUDIT_SOURCE_LABELS[s]}
+            </label>
+          ))}
         </div>
       </fieldset>
 

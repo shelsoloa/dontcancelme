@@ -39,6 +39,22 @@ export enum RiskCategory {
   Substances = "substances",
 }
 
+/**
+ * Which kinds of timeline content an audit pulls. An audit can combine several:
+ * the user's own posts, posts they've liked, and posts they've reposted.
+ */
+export type AuditSource = "posts" | "likes" | "reposts";
+
+/** All audit sources, in display order. */
+export const ALL_AUDIT_SOURCES: AuditSource[] = ["posts", "likes", "reposts"];
+
+/** Human-readable labels for the audit sources. */
+export const AUDIT_SOURCE_LABELS: Record<AuditSource, string> = {
+  posts: "Your posts",
+  likes: "Liked posts",
+  reposts: "Reposts",
+};
+
 /** Human-readable labels for display. Keep in sync with {@link RiskCategory}. */
 export const RISK_LABELS: Record<RiskCategory, string> = {
   [RiskCategory.PII]: "Personally identifiable information",
@@ -132,6 +148,8 @@ export type AuditJobRecord = {
    * a later re-run scan only the delta.
    */
   enabledCategories: RiskCategory[];
+  /** Which timeline content this audit pulls (own posts / likes / reposts). */
+  enabledSources: AuditSource[];
   status: AuditJobStatus;
   progress: AuditJobProgress;
   /** Per-category flagged counts for the results summary. */

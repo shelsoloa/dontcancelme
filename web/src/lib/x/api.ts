@@ -41,59 +41,169 @@ async function xGet(url: string | URL, accessToken: string): Promise<unknown> {
   return res.json();
 }
 
-export type XMe = { id: string; username: string; tweetCount: number };
+export type XMe = {
+  id: string;
+  username: string;
+  /** Total posts including reposts (X's `tweet_count`). */
+  tweetCount: number;
+  /** Number of posts this user has liked (X's `like_count`). */
+  likeCount: number;
+};
 
-/** Current user + total tweet count (for the billing gate). */
+/** Current user + total post/like counts (for the billing gate). */
 export async function getMe(accessToken: string): Promise<XMe> {
   const json = (await xGet(
     `${X_API}/users/me?user.fields=public_metrics`,
     accessToken,
   )) as {
-    data: { id: string; username: string; public_metrics?: { tweet_count?: number } };
+    data: {
+      id: string;
+      username: string;
+      public_metrics?: { tweet_count?: number; like_count?: number };
+    };
   };
   return {
     id: json.data.id,
     username: json.data.username,
     tweetCount: json.data.public_metrics?.tweet_count ?? 0,
+    likeCount: json.data.public_metrics?.like_count ?? 0,
   };
 }
 
-type TweetsPage = {
-  data?: Array<{ id: string; text: string; created_at: string }>;
+/** Raw X tweet object, as returned in `data` / `includes.tweets`. */
+type XTweet = {
+  id: string;
+  text: string;
+  created_at: string;
+  author_id?: string;
+  referenced_tweets?: Array<{ type: string; id: string }>;
+};
+type XUser = { id: string; username: string };
+
+/** Build a {@link RawTweet} from an X tweet given its author's handle. */
+function toRawTweet(t: XTweet, handle: string): RawTweet {
+  return {
+    id: t.id,
+    text: t.text,
+    createdAt: t.created_at,
+    authorHandle: handle,
+    url: `https://x.com/${handle}/status/${t.id}`,
+  };
+}
+
+// Bound pagination independently of `next_token`: X can return pages with a
+// next_token but no usable tweets, which would otherwise loop until rate-limited.
+const pageBudget = (cap: number) => Math.ceil(cap / 100) + 2;
+
+type TimelinePage = {
+  data?: XTweet[];
+  includes?: { tweets?: XTweet[]; users?: XUser[] };
   meta?: { next_token?: string };
 };
 
-/** Fetch up to `cap` of the user's most recent tweets. */
-export async function listTweets(
+/** Which kinds of timeline items {@link listTimeline} should keep. */
+export type TimelineFilter = { includePosts: boolean; includeReposts: boolean };
+
+/**
+ * Fetch up to `cap` items from the user's timeline, keeping original posts
+ * and/or reposts per `filter`. Reposts resolve to the ORIGINAL tweet (full text,
+ * original author handle + permalink) via expansions; if the original isn't in
+ * `includes` we fall back to the (truncated "RT @…") timeline entry.
+ */
+export async function listTimeline(
   accessToken: string,
   userId: string,
   handle: string,
   cap: number,
+  filter: TimelineFilter,
 ): Promise<RawTweet[]> {
   const out: RawTweet[] = [];
   let paginationToken: string | undefined;
-  // Bound the loop independently of `next_token`: X can return pages with a
-  // next_token but no usable tweets, which would otherwise loop until rate-limited.
-  const maxPages = Math.ceil(cap / 100) + 2;
+  const maxPages = pageBudget(cap);
 
   for (let page = 0; page < maxPages && out.length < cap; page++) {
     const url = new URL(`${X_API}/users/${userId}/tweets`);
     url.searchParams.set("max_results", "100");
-    url.searchParams.set("tweet.fields", "created_at");
+    url.searchParams.set("tweet.fields", "created_at,referenced_tweets");
+    url.searchParams.set(
+      "expansions",
+      "referenced_tweets.id,referenced_tweets.id.author_id",
+    );
+    url.searchParams.set("user.fields", "username");
+    // If reposts aren't wanted, let X drop them server-side.
+    if (!filter.includeReposts) url.searchParams.set("exclude", "retweets");
     if (paginationToken) url.searchParams.set("pagination_token", paginationToken);
 
-    const json = (await xGet(url, accessToken)) as TweetsPage;
+    const json = (await xGet(url, accessToken)) as TimelinePage;
     const batch = json.data ?? [];
     if (batch.length === 0) break; // no more tweets — stop (avoids spinning)
 
+    const refTweets = new Map(
+      (json.includes?.tweets ?? []).map((t) => [t.id, t]),
+    );
+    const users = new Map((json.includes?.users ?? []).map((u) => [u.id, u]));
+
     for (const t of batch) {
-      out.push({
-        id: t.id,
-        text: t.text,
-        createdAt: t.created_at,
-        authorHandle: handle,
-        url: `https://x.com/${handle}/status/${t.id}`,
-      });
+      const retweet = t.referenced_tweets?.find((r) => r.type === "retweeted");
+      if (retweet) {
+        if (!filter.includeReposts) continue;
+        const orig = refTweets.get(retweet.id);
+        const author = orig?.author_id ? users.get(orig.author_id) : undefined;
+        out.push(
+          orig ? toRawTweet(orig, author?.username ?? handle) : toRawTweet(t, handle),
+        );
+      } else {
+        if (!filter.includePosts) continue;
+        out.push(toRawTweet(t, handle));
+      }
+      if (out.length >= cap) break;
+    }
+
+    paginationToken = json.meta?.next_token;
+    if (!paginationToken) break;
+  }
+
+  return out;
+}
+
+type LikedPage = {
+  data?: XTweet[];
+  includes?: { users?: XUser[] };
+  meta?: { next_token?: string };
+};
+
+/**
+ * Fetch up to `cap` of the user's most recently liked posts (others' content).
+ * Each carries the ORIGINAL author's handle + permalink via the `author_id`
+ * expansion. This is an Owned Read endpoint scoped to the authenticated user.
+ */
+export async function listLikedTweets(
+  accessToken: string,
+  userId: string,
+  cap: number,
+): Promise<RawTweet[]> {
+  const out: RawTweet[] = [];
+  let paginationToken: string | undefined;
+  const maxPages = pageBudget(cap);
+
+  for (let page = 0; page < maxPages && out.length < cap; page++) {
+    const url = new URL(`${X_API}/users/${userId}/liked_tweets`);
+    url.searchParams.set("max_results", "100");
+    url.searchParams.set("tweet.fields", "created_at");
+    url.searchParams.set("expansions", "author_id");
+    url.searchParams.set("user.fields", "username");
+    if (paginationToken) url.searchParams.set("pagination_token", paginationToken);
+
+    const json = (await xGet(url, accessToken)) as LikedPage;
+    const batch = json.data ?? [];
+    if (batch.length === 0) break;
+
+    const users = new Map((json.includes?.users ?? []).map((u) => [u.id, u]));
+    for (const t of batch) {
+      const author = t.author_id ? users.get(t.author_id) : undefined;
+      // Liked posts belong to other accounts; without a resolved handle we can't
+      // build a correct permalink, so fall back to a generic one.
+      out.push(toRawTweet(t, author?.username ?? "i"));
       if (out.length >= cap) break;
     }
 

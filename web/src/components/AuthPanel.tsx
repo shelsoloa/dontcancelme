@@ -43,7 +43,7 @@ export function AuthPanel({
         redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
           next,
         )}`,
-        scopes: "users.read tweet.read offline.access",
+        scopes: "users.read tweet.read like.read offline.access",
       },
     });
     if (error) setError(error.message);

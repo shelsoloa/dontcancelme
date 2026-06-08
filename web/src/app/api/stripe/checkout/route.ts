@@ -3,8 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe";
 import { getValidToken, resolveConnectionId } from "@/lib/x/oauth";
-import { getMe, MAX_FETCHABLE } from "@/lib/x/api";
+import { getMe } from "@/lib/x/api";
 import { billableBlocks } from "@/lib/billing";
+import { estimateScannable, parseSources } from "@/lib/x/scannable";
 
 export const runtime = "nodejs";
 
@@ -29,12 +30,14 @@ export async function POST(request: Request) {
 
   const { data: job } = await supabase
     .from("audit_jobs")
-    .select("job_id, connection_id")
+    .select("job_id, connection_id, enabled_sources")
     .eq("job_id", jobId)
     .maybeSingle();
   if (!job) {
     return NextResponse.json({ error: "job not found" }, { status: 404 });
   }
+
+  const sources = parseSources(job.enabled_sources);
 
   const connectionId = await resolveConnectionId(user.id, job.connection_id);
   if (!connectionId) {
@@ -43,7 +46,9 @@ export async function POST(request: Request) {
 
   const token = await getValidToken(connectionId);
   const me = await getMe(token);
-  const cap = Math.min(me.tweetCount, MAX_FETCHABLE);
+  // Must mirror the ingestion gate's count exactly, or the gate can demand
+  // payment for a price this route would refuse to charge.
+  const cap = estimateScannable(me, sources);
   const blocks = billableBlocks(cap);
   if (blocks <= 0) {
     return NextResponse.json({ error: "no_payment_needed" }, { status: 400 });
