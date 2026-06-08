@@ -24,6 +24,7 @@ type JobMeta = {
   enabledCategories: RiskCategory[];
   createdAt: string;
   startedAt: string | null;
+  scanLimit: number | null;
 };
 
 type Phase =
@@ -57,7 +58,7 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       } = await supabase.auth.getUser();
       const { data: job } = await supabase
         .from("audit_jobs")
-        .select("job_id, status, enabled_categories, created_at, started_at")
+        .select("job_id, status, enabled_categories, created_at, started_at, scan_limit")
         .eq("job_id", jobId)
         .maybeSingle();
 
@@ -76,6 +77,7 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         enabledCategories: (job.enabled_categories ?? []) as RiskCategory[],
         createdAt: job.created_at,
         startedAt: job.started_at,
+        scanLimit: typeof job.scan_limit === "number" ? job.scan_limit : null,
       };
       setMeta(jobMeta);
 
@@ -391,6 +393,9 @@ function ResultsView({
         </Row>
         <Row label="Scanned">{result.progress.total} tweets</Row>
         <Row label="Flagged">{result.progress.flagged} tweets</Row>
+        {meta.scanLimit != null && (
+          <Row label="Post limit">{meta.scanLimit.toLocaleString()}</Row>
+        )}
         <Row label="Categories">
           {meta.enabledCategories.map((c) => RISK_LABELS[c]).join(", ") || "—"}
         </Row>

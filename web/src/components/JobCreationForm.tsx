@@ -53,6 +53,7 @@ export function JobCreationForm({
   const [categories, setCategories] = useState<RiskCategory[]>(
     initial?.categories ?? [],
   );
+  const [limitRaw, setLimitRaw] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
   const allSelected = categories.length === ALL_CATEGORIES.length;
@@ -92,6 +93,14 @@ export function JobCreationForm({
       setLocalError("Select at least one category to audit.");
       return null;
     }
+    let limit: number | undefined;
+    if (limitRaw.trim() !== "") {
+      limit = parseInt(limitRaw, 10);
+      if (!Number.isInteger(limit) || limit < 1) {
+        setLocalError("Post limit must be a positive whole number.");
+        return null;
+      }
+    }
     return {
       profile: {
         age: ageNum,
@@ -102,6 +111,7 @@ export function JobCreationForm({
       },
       sources,
       categories,
+      limit,
     };
   }
 
@@ -234,6 +244,28 @@ export function JobCreationForm({
           ))}
         </div>
       </fieldset>
+
+      <details className="group">
+        <summary className="cursor-pointer text-sm font-medium text-zinc-500 select-none">
+          Advanced options
+        </summary>
+        <fieldset className="mt-4 space-y-3">
+          <label className="block">
+            <span className="mb-1 block text-sm">Number of posts to scan</span>
+            <input
+              type="number"
+              min={1}
+              value={limitRaw}
+              onChange={(e) => setLimitRaw(e.target.value)}
+              placeholder="No limit"
+              className={field}
+            />
+            <span className="mt-1 block text-xs text-zinc-500">
+              Leave blank to scan all available posts (up to 3,200 per source).
+            </span>
+          </label>
+        </fieldset>
+      </details>
 
       {shownError && <p className="text-sm text-red-600">{shownError}</p>}
 

@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
   const { data: job } = await supabase
     .from("audit_jobs")
-    .select("job_id, connection_id, enabled_sources")
+    .select("job_id, connection_id, enabled_sources, scan_limit")
     .eq("job_id", jobId)
     .maybeSingle();
   if (!job) {
@@ -38,6 +38,7 @@ export async function POST(request: Request) {
   }
 
   const sources = parseSources(job.enabled_sources);
+  const scanLimit = typeof job.scan_limit === "number" ? job.scan_limit : null;
 
   const connectionId = await resolveConnectionId(user.id, job.connection_id);
   if (!connectionId) {
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
   const me = await getMe(token);
   // Must mirror the ingestion gate's count exactly, or the gate can demand
   // payment for a price this route would refuse to charge.
-  const cap = estimateScannable(me, sources);
+  const cap = estimateScannable(me, sources, scanLimit);
   const blocks = billableBlocks(cap);
   if (blocks <= 0) {
     return NextResponse.json({ error: "no_payment_needed" }, { status: 400 });

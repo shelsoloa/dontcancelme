@@ -15,6 +15,8 @@ export type StartAuditInput = {
   profile: ProfileInput;
   sources: AuditSource[];
   categories: RiskCategory[];
+  /** Maximum number of posts to scan. Absent means no limit (API max). */
+  limit?: number;
 };
 
 export type StartAuditResult = { jobId: string } | { error: string };
@@ -46,6 +48,12 @@ export async function startAudit(
   if (!input.profile.gender || !Number.isFinite(input.profile.age)) {
     return { error: "Age and gender are required." };
   }
+  if (
+    input.limit !== undefined &&
+    (!Number.isInteger(input.limit) || input.limit < 1)
+  ) {
+    return { error: "Post limit must be a positive whole number." };
+  }
 
   const { error: profileErr } = await supabase.from("profiles").upsert({
     user_id: user.id,
@@ -75,6 +83,7 @@ export async function startAudit(
       platform: "x",
       enabled_categories: categories,
       enabled_sources: sources,
+      scan_limit: input.limit ?? null,
       status: "queued",
       connection_id: connection?.id ?? null,
     })

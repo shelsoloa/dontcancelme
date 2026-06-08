@@ -16,30 +16,35 @@ import type { RawTweet } from "@/lib/audit/sampleTweets";
 
 export const runtime = "nodejs";
 
-/** Fetch the selected sources and combine them, deduped by tweet id. */
+/** Fetch the selected sources and combine them, deduped and capped by `limit`. */
 async function fetchSources(
   token: string,
   me: XMe,
   sources: AuditSource[],
+  limit?: number | null,
 ): Promise<RawTweet[]> {
+  const cap = Math.min(limit ?? MAX_FETCHABLE, MAX_FETCHABLE);
   const includePosts = sources.includes("posts");
   const includeReposts = sources.includes("reposts");
   const all: RawTweet[] = [];
 
   if (includePosts || includeReposts) {
     all.push(
-      ...(await listTimeline(token, me.id, me.username, MAX_FETCHABLE, {
+      ...(await listTimeline(token, me.id, me.username, cap, {
         includePosts,
         includeReposts,
       })),
     );
   }
   if (sources.includes("likes")) {
-    all.push(...(await listLikedTweets(token, me.id, MAX_FETCHABLE)));
+    all.push(...(await listLikedTweets(token, me.id, cap)));
   }
 
   const seen = new Set<string>();
-  return all.filter((t) => (seen.has(t.id) ? false : (seen.add(t.id), true)));
+  const deduped = all.filter((t) =>
+    seen.has(t.id) ? false : (seen.add(t.id), true),
+  );
+  return limit != null ? deduped.slice(0, limit) : deduped;
 }
 
 /**
@@ -66,7 +71,7 @@ export async function GET(request: Request) {
   // RLS scopes this to the owner.
   const { data: job } = await supabase
     .from("audit_jobs")
-    .select("job_id, connection_id, enabled_sources")
+    .select("job_id, connection_id, enabled_sources, scan_limit")
     .eq("job_id", jobId)
     .maybeSingle();
   if (!job) {
@@ -74,6 +79,7 @@ export async function GET(request: Request) {
   }
 
   const sources = parseSources(job.enabled_sources);
+  const scanLimit = typeof job.scan_limit === "number" ? job.scan_limit : null;
 
   const connectionId = await resolveConnectionId(user.id, job.connection_id);
   if (!connectionId) {
@@ -95,7 +101,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "x_api_error" }, { status });
   }
 
-  const scannable = estimateScannable(me, sources);
+  const scannable = estimateScannable(me, sources, scanLimit);
   const blocks = billableBlocks(scannable);
 
   if (blocks > 0) {
@@ -119,7 +125,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const tweets = await fetchSources(token, me, sources);
+    const tweets = await fetchSources(token, me, sources, scanLimit);
     return NextResponse.json({ tweets });
   } catch {
     return NextResponse.json({ error: "x_api_error" }, { status: 502 });
