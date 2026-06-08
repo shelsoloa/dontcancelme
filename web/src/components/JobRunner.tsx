@@ -5,7 +5,10 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { runAudit, type AuditSnapshot } from "@/lib/audit/engine";
 import { loadAudit, saveAudit, type StoredAudit } from "@/lib/audit/storage";
-import { USING_SAMPLE_DATA } from "@/lib/audit/source";
+import {
+  PaymentRequiredError,
+  type PaymentRequiredDetails,
+} from "@/lib/audit/source";
 import {
   RISK_LABELS,
   type AuditedPost,
@@ -29,6 +32,7 @@ type Phase =
   | { kind: "running"; snapshot: AuditSnapshot }
   | { kind: "done"; result: StoredAudit }
   | { kind: "missing_results" } // job completed elsewhere; no local data
+  | { kind: "payment_required"; details: PaymentRequiredDetails }
   | { kind: "error"; message: string };
 
 const SEVERITY_STYLES: Record<Severity, string> = {
@@ -41,11 +45,11 @@ const SEVERITY_STYLES: Record<Severity, string> = {
 export default function JobRunner({ jobId }: { jobId: string }) {
   const [meta, setMeta] = useState<JobMeta | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
+  const [live, setLive] = useState(false);
   const startedRef = useRef(false);
 
   useEffect(() => {
     const supabase = createClient();
-    const abort = new AbortController();
 
     (async () => {
       const {
@@ -61,6 +65,10 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         setPhase({ kind: "not_found" });
         return;
       }
+
+      // X-authenticated users scan their real timeline; others get sample data.
+      const isLive = user.app_metadata?.provider === "x";
+      setLive(isLive);
 
       const jobMeta: JobMeta = {
         jobId: job.job_id,
@@ -84,17 +92,17 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       }
 
       // queued or running with no local results → run it now.
-      void start(jobMeta, user.id, supabase, abort.signal);
+      void start(jobMeta, user.id, isLive, supabase);
     })();
-
-    return () => abort.abort();
+    // No abort-on-cleanup: under React StrictMode the effect mounts twice, and
+    // aborting here would kill the real run (it finishes + persists regardless).
   }, [jobId]);
 
   async function start(
     jobMeta: JobMeta,
     userId: string,
+    isLive: boolean,
     supabase: ReturnType<typeof createClient>,
-    signal: AbortSignal,
   ) {
     if (startedRef.current) return;
     startedRef.current = true;
@@ -114,11 +122,12 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         jobId: jobMeta.jobId,
         userId,
         enabledCategories: jobMeta.enabledCategories,
-        signal,
+        live: isLive,
+        // Real scans are slow enough already; the per-tweet delay only exists to
+        // make sample-data progress visible.
+        stepDelayMs: isLive ? 0 : undefined,
         onProgress: (snapshot) => setPhase({ kind: "running", snapshot }),
       });
-
-      if (signal.aborted) return;
 
       const finishedAt = new Date().toISOString();
       const stored: StoredAudit = {
@@ -143,7 +152,17 @@ export default function JobRunner({ jobId }: { jobId: string }) {
 
       setPhase({ kind: "done", result: stored });
     } catch (err) {
-      if (signal.aborted) return;
+      if (err instanceof PaymentRequiredError) {
+        // Not a failure — the user just needs to pay. Re-queue so returning
+        // after checkout re-runs the scan (which now passes the gate).
+        await supabase
+          .from("audit_jobs")
+          .update({ status: "queued" })
+          .eq("job_id", jobMeta.jobId);
+        startedRef.current = false;
+        setPhase({ kind: "payment_required", details: err.details });
+        return;
+      }
       const message = err instanceof Error ? err.message : "Audit failed.";
       await supabase
         .from("audit_jobs")
@@ -161,7 +180,9 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (user) void start(meta, user.id, supabase, new AbortController().signal);
+      if (user) {
+        void start(meta, user.id, live, supabase);
+      }
     })();
   }
 
@@ -204,10 +225,70 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         </div>
       )}
 
+      {phase.kind === "payment_required" && (
+        <PaymentView jobId={jobId} details={phase.details} />
+      )}
+
       {phase.kind === "done" && meta && (
-        <ResultsView result={phase.result} meta={meta} />
+        <ResultsView result={phase.result} meta={meta} live={live} />
       )}
     </main>
+  );
+}
+
+function PaymentView({
+  jobId,
+  details,
+}: {
+  jobId: string;
+  details: PaymentRequiredDetails;
+}) {
+  const [paying, setPaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pay() {
+    setPaying(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setError(data.error ?? "Could not start checkout.");
+      setPaying(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start checkout.");
+      setPaying(false);
+    }
+  }
+
+  const blocks = details.billableBlocks;
+  return (
+    <div className="mt-6 rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+      <h2 className="text-lg font-semibold">This scan needs the Pro plan</h2>
+      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        Your account has <strong>{details.tweetCount.toLocaleString()}</strong>{" "}
+        scannable tweets — over the free {details.freeLimit}-tweet limit. Scanning
+        the rest costs <strong>{blocks}</strong> × 500-tweet block
+        {blocks === 1 ? "" : "s"}.
+      </p>
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      <button
+        onClick={pay}
+        disabled={paying}
+        className="mt-4 inline-flex h-11 items-center justify-center rounded-full bg-foreground px-6 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+        {paying
+          ? "Starting checkout…"
+          : `Pay to scan ${details.tweetCount.toLocaleString()} tweets`}
+      </button>
+    </div>
   );
 }
 
@@ -265,9 +346,11 @@ function RunningView({ snapshot }: { snapshot: AuditSnapshot }) {
 function ResultsView({
   result,
   meta,
+  live,
 }: {
   result: StoredAudit;
   meta: JobMeta;
+  live: boolean;
 }) {
   const flaggedPosts = result.posts.filter((p) => p.flags.length > 0);
   const cleanPosts = result.posts.filter((p) => p.flags.length === 0);
@@ -303,12 +386,11 @@ function ResultsView({
         </div>
       )}
 
-      {USING_SAMPLE_DATA && (
-        <p className="rounded-lg bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-          Sample data — connect an X account to scan real tweets. Deletion isn’t
-          available yet; review the flagged posts below.
-        </p>
-      )}
+      <p className="rounded-lg bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+        {live
+          ? "Deletion isn’t available yet — review the flagged posts below."
+          : "Sample data — sign in with X to scan real tweets. Deletion isn’t available yet; review the flagged posts below."}
+      </p>
 
       <section>
         <h2 className="text-sm font-medium text-zinc-500">

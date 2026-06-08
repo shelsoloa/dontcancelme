@@ -50,6 +50,17 @@ export async function startAudit(
   });
   if (profileErr) return { error: profileErr.message };
 
+  // Link the user's X connection (if any) so the audit can ingest live tweets.
+  const { data: connection } = await supabase
+    .from("connections")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("platform", "x")
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const { data: job, error: jobErr } = await supabase
     .from("audit_jobs")
     .insert({
@@ -57,6 +68,7 @@ export async function startAudit(
       platform: "x",
       enabled_categories: categories,
       status: "queued",
+      connection_id: connection?.id ?? null,
     })
     .select("job_id")
     .single();

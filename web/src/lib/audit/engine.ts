@@ -26,6 +26,8 @@ export type RunAuditArgs = {
   jobId: string;
   userId: string;
   enabledCategories: RiskCategory[];
+  /** Pull the user's real X timeline (vs sample data). */
+  live?: boolean;
   /** Called after each tweet is scanned, plus once with the initial total. */
   onProgress?: (snapshot: AuditSnapshot) => void;
   /** Optional cancellation. */
@@ -46,7 +48,7 @@ export async function runAudit(args: RunAuditArgs): Promise<AuditSnapshot> {
   const { jobId, userId, enabledCategories, onProgress, signal } = args;
   const stepDelayMs = args.stepDelayMs ?? 90;
 
-  const tweets = await fetchTweets();
+  const tweets = await fetchTweets({ jobId, live: args.live });
   if (signal?.aborted) throw new AbortError();
 
   const posts: AuditedPost[] = [];
