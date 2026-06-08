@@ -27,7 +27,7 @@ export async function TopBar() {
             </Link>
           ) : (
             <Link
-              href="/start"
+              href="/login"
               className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-300 px-4 font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
             >
               Login

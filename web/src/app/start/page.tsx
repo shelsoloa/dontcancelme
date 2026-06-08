@@ -7,10 +7,10 @@ import {
   JobCreationForm,
   type JobFormInitial,
 } from "@/components/JobCreationForm";
+import { AuthPanel } from "@/components/AuthPanel";
 import { startAudit, type StartAuditInput } from "./actions";
 
 const PENDING_KEY = "pendingAudit";
-const DEV_LOGIN = process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "true";
 
 export default function StartPage() {
   const router = useRouter();
@@ -24,8 +24,6 @@ export default function StartPage() {
   );
 
   const [showAuth, setShowAuth] = useState(false);
-  const [devEmail, setDevEmail] = useState("dev@example.com");
-  const [devPassword, setDevPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,42 +95,6 @@ export default function StartPage() {
     }
   }
 
-  async function handleX() {
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "x",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/start`,
-        scopes: "users.read tweet.read offline.access",
-      },
-    });
-    if (error) setError(error.message);
-  }
-
-  async function handleDevAuth(e: React.FormEvent) {
-    e.preventDefault();
-    if (!pendingPayload) return;
-    setError(null);
-    setSubmitting(true);
-    const supabase = createClient();
-    const signIn = await supabase.auth.signInWithPassword({
-      email: devEmail,
-      password: devPassword,
-    });
-    if (signIn.error) {
-      const signUp = await supabase.auth.signUp({
-        email: devEmail,
-        password: devPassword,
-      });
-      if (signUp.error) {
-        setSubmitting(false);
-        setError(signUp.error.message);
-        return;
-      }
-    }
-    await finalize(pendingPayload);
-  }
-
   if (!ready) {
     return (
       <main className="flex flex-1 items-center justify-center p-6 text-zinc-500">
@@ -140,9 +102,6 @@ export default function StartPage() {
       </main>
     );
   }
-
-  const field =
-    "w-full rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700";
 
   return (
     <main className="mx-auto w-full max-w-xl flex-1 px-6 py-12">
@@ -159,54 +118,20 @@ export default function StartPage() {
         onSubmit={handleSubmit}
       />
 
-      {showAuth && !userId && (
-        <div className="mt-8 rounded-xl border border-zinc-200 p-5 dark:border-zinc-800">
+      {showAuth && !userId && pendingPayload && (
+        <div className="mt-8">
           <h2 className="text-sm font-medium">Sign in to start your audit</h2>
           <p className="mt-1 text-xs text-zinc-500">
             We need access to your X account to scan it.
           </p>
-          <button
-            onClick={handleX}
-            disabled={submitting}
-            className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-full bg-black px-6 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 dark:bg-white dark:text-black"
-          >
-            Continue with X
-          </button>
-
-          {DEV_LOGIN && (
-            <form
-              onSubmit={handleDevAuth}
-              className="mt-5 space-y-3 border-t border-zinc-200 pt-5 dark:border-zinc-800"
-            >
-              <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                Dev login (local only)
-              </p>
-              <input
-                type="email"
-                value={devEmail}
-                onChange={(e) => setDevEmail(e.target.value)}
-                placeholder="email"
-                className={field}
-                required
-              />
-              <input
-                type="password"
-                value={devPassword}
-                onChange={(e) => setDevPassword(e.target.value)}
-                placeholder="password (min 6 chars)"
-                minLength={6}
-                className={field}
-                required
-              />
-              <button
-                type="submit"
-                disabled={submitting}
-                className="inline-flex h-10 w-full items-center justify-center rounded-full border border-zinc-300 px-6 text-sm font-medium transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
-              >
-                {submitting ? "Signing in…" : "Sign in / sign up"}
-              </button>
-            </form>
-          )}
+          <AuthPanel
+            className="mt-4"
+            next="/start"
+            onBeforeOAuth={() =>
+              sessionStorage.setItem(PENDING_KEY, JSON.stringify(pendingPayload))
+            }
+            onDevSignedIn={() => finalize(pendingPayload)}
+          />
         </div>
       )}
     </main>
