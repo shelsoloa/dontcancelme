@@ -6,9 +6,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 
 /**
- * Stripe webhook. Verifies the signature against the raw body, then marks the
- * matching `audit_payments` row paid. Idempotent — a repeated event just
- * re-applies the same update.
+ * Stripe webhook. Verifies the signature against the raw body, then credits
+ * the user's scan-credit balance via `apply_credit_purchase` (idempotent —
+ * a repeated event for the same session is a no-op).
  */
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
@@ -30,18 +30,18 @@ export async function POST(request: Request) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
-    if (session.payment_status === "paid") {
+    if (
+      session.payment_status === "paid" &&
+      session.metadata?.type === "topup"
+    ) {
       const admin = createAdminClient();
-      await admin
-        .from("audit_payments")
-        .update({
-          status: "paid",
-          stripe_payment_intent:
-            typeof session.payment_intent === "string"
-              ? session.payment_intent
-              : null,
-        })
-        .eq("stripe_session_id", session.id);
+      await admin.rpc("apply_credit_purchase", {
+        p_session_id: session.id,
+        p_payment_intent:
+          typeof session.payment_intent === "string"
+            ? session.payment_intent
+            : null,
+      });
     }
   }
 

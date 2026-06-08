@@ -10,9 +10,8 @@ import { SAMPLE_TWEETS, type RawTweet } from "./sampleTweets";
 export type { RawTweet };
 
 export type PaymentRequiredDetails = {
-  tweetCount: number;
-  billableBlocks: number;
-  freeLimit: number;
+  shortfall: number;
+  creditsToBuy: number;
 };
 
 /** Thrown when a live scan exceeds the free tweet limit and needs payment. */
@@ -39,9 +38,8 @@ export async function fetchTweets(
     if (res.status === 402) {
       const d = await res.json();
       throw new PaymentRequiredError({
-        tweetCount: d.tweetCount,
-        billableBlocks: d.billableBlocks,
-        freeLimit: d.freeLimit,
+        shortfall: d.shortfall,
+        creditsToBuy: d.creditsToBuy,
       });
     }
     if (!res.ok) {

@@ -253,10 +253,10 @@ function PaymentView({
     setPaying(true);
     setError(null);
     try {
-      const res = await fetch("/api/stripe/checkout", {
+      const res = await fetch("/api/stripe/topup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId }),
+        body: JSON.stringify({ credits: details.creditsToBuy, jobId }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.url) {
@@ -271,15 +271,16 @@ function PaymentView({
     }
   }
 
-  const blocks = details.billableBlocks;
+  const costDollars = (details.creditsToBuy / 100).toFixed(2);
   return (
     <div className="mt-6 rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
-      <h2 className="text-lg font-semibold">This scan needs the Pro plan</h2>
+      <h2 className="text-lg font-semibold">Not enough scan credits</h2>
       <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-        Your account has <strong>{details.tweetCount.toLocaleString()}</strong>{" "}
-        scannable tweets — over the free {details.freeLimit}-tweet limit. Scanning
-        the rest costs <strong>{blocks}</strong> × 500-tweet block
-        {blocks === 1 ? "" : "s"}.
+        This scan needs{" "}
+        <strong>{details.shortfall.toLocaleString()}</strong> more credits than
+        you have. Top up{" "}
+        <strong>{details.creditsToBuy.toLocaleString()}</strong> credits ($
+        {costDollars}) to continue.
       </p>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       <button
@@ -289,7 +290,7 @@ function PaymentView({
       >
         {paying
           ? "Starting checkout…"
-          : `Pay to scan ${details.tweetCount.toLocaleString()} tweets`}
+          : `Top up ${details.creditsToBuy.toLocaleString()} credits`}
       </button>
     </div>
   );
