@@ -7,7 +7,7 @@ export default function Home() {
     <>
       <TopBar />
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-24">
-        <div className="max-w-3xl relative border">
+        <div className="max-w-3xl relative">
           <h1 className="text-4xl font-bold sm:text-8xl">
             dontcancel<span className="text-primary">.me</span>
           </h1>
