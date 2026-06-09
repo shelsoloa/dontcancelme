@@ -97,7 +97,7 @@ export default function StartPage() {
 
   if (!ready) {
     return (
-      <main className="flex flex-1 items-center justify-center p-6 text-zinc-500">
+      <main className="flex flex-1 items-center justify-center p-6 text-ink-2">
         Loading…
       </main>
     );
@@ -106,7 +106,7 @@ export default function StartPage() {
   return (
     <main className="mx-auto w-full max-w-xl flex-1 px-6 py-12">
       <h1 className="text-2xl font-semibold tracking-tight">Start an audit</h1>
-      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="mt-2 text-sm text-ink-2">
         Tell us a bit about you so we can judge what counts as risky, then pick
         what to scan for.
       </p>
@@ -121,7 +121,7 @@ export default function StartPage() {
       {showAuth && !userId && pendingPayload && (
         <div className="mt-8">
           <h2 className="text-sm font-medium">Sign in to start your audit</h2>
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-ink-2">
             We need access to your X account to scan it.
           </p>
           <AuthPanel

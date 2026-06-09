@@ -24,9 +24,9 @@ export default async function SettingsPage() {
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
 
-      <dl className="mt-6 divide-y divide-zinc-200 rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+      <dl className="mt-6 divide-y divide-line rounded-xl border border-line">
         <div className="flex items-center justify-between px-5 py-3">
-          <dt className="text-sm text-zinc-500">
+          <dt className="text-sm text-ink-2">
             {email ? "Email" : "Signed in with"}
           </dt>
           <dd className="text-sm">{email ?? providerLabel(provider)}</dd>

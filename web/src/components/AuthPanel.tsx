@@ -78,28 +78,28 @@ export function AuthPanel({
   }
 
   const field =
-    "w-full rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700";
+    "w-full rounded-lg border border-line-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-primary";
 
   return (
     <div
-      className={`rounded-xl border border-zinc-200 p-5 dark:border-zinc-800 ${className}`}
+      className={`rounded-xl border border-line p-5 ${className}`}
     >
       <button
         onClick={handleX}
         disabled={submitting}
-        className="inline-flex h-11 w-full items-center justify-center rounded-full bg-black px-6 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 dark:bg-white dark:text-black"
+        className="inline-flex h-11 w-full items-center justify-center rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         Continue with X
       </button>
 
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-3 text-sm text-crit">{error}</p>}
 
       {DEV_LOGIN && (
         <form
           onSubmit={handleDevAuth}
-          className="mt-5 space-y-3 border-t border-zinc-200 pt-5 dark:border-zinc-800"
+          className="mt-5 space-y-3 border-t border-line pt-5"
         >
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-3">
             Dev login (local only)
           </p>
           <input
@@ -122,7 +122,7 @@ export function AuthPanel({
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex h-10 w-full items-center justify-center rounded-full border border-zinc-300 px-6 text-sm font-medium transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            className="inline-flex h-10 w-full items-center justify-center rounded-full border border-line-strong px-6 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-50"
           >
             {submitting ? "Signing in…" : "Sign in / sign up"}
           </button>

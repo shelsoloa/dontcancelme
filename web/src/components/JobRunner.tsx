@@ -16,6 +16,15 @@ import {
   type RiskCategory,
   type Severity,
 } from "@/lib/audit/types";
+import {
+  postSeverity,
+  shouldRedact,
+  redactReason,
+  SEVERITY_TOKEN,
+  type DesignSeverity,
+} from "@/lib/audit/severity";
+import { RiskCard } from "@/components/ui/RiskCard";
+import { StatStrip } from "@/components/ui/StatStrip";
 import { StatusBadge, formatDate, auditName } from "@/components/CardList";
 
 type JobMeta = {
@@ -36,11 +45,13 @@ type Phase =
   | { kind: "payment_required"; details: PaymentRequiredDetails }
   | { kind: "error"; message: string };
 
+// Severity → display style is now in lib/audit/severity.ts and the ui/RiskCard/Badge
+// components. Kept minimal here for the compact running-view chip only.
 const SEVERITY_STYLES: Record<Severity, string> = {
-  low: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
-  medium: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  high: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
-  critical: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+  low: "bg-low-soft text-low",
+  medium: "bg-med-soft text-med",
+  high: "bg-high-soft text-high",
+  critical: "bg-crit-soft text-crit",
 };
 
 export default function JobRunner({ jobId }: { jobId: string }) {
@@ -190,20 +201,20 @@ export default function JobRunner({ jobId }: { jobId: string }) {
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
-      <Link href="/portal/jobs" className="text-sm text-zinc-500 hover:underline">
+      <Link href="/portal/jobs" className="text-sm text-ink-2 hover:underline">
         ← Back to audits
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">
         {auditName(meta?.createdAt)}
       </h1>
-      <p className="mt-1 text-sm text-zinc-500">#{jobId}</p>
+      <p className="mt-1 text-sm text-ink-3">#{jobId}</p>
 
       {phase.kind === "loading" && (
-        <p className="mt-6 text-sm text-zinc-500">Loading…</p>
+        <p className="mt-6 text-sm text-ink-2">Loading…</p>
       )}
 
       {phase.kind === "not_found" && (
-        <p className="mt-6 text-sm text-zinc-500">
+        <p className="mt-6 text-sm text-ink-2">
           We couldn’t find that audit.
         </p>
       )}
@@ -213,7 +224,7 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       {phase.kind === "error" && (
         <div className="mt-6">
           <StatusBadge status="failed" />
-          <p className="mt-3 text-sm text-red-600">{phase.message}</p>
+          <p className="mt-3 text-sm text-crit">{phase.message}</p>
           <RerunButton onClick={rerun} />
         </div>
       )}
@@ -221,7 +232,7 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       {phase.kind === "missing_results" && (
         <div className="mt-6">
           <h2 className="text-lg font-semibold">This run has been cleared</h2>
-          <p className="mt-2 text-sm text-zinc-500">
+          <p className="mt-2 text-sm text-ink-2">
             We never store any of your tweets on our server, so if you cleared
             your cache, the tweets in this run were cleared too.
           </p>
@@ -274,20 +285,20 @@ function PaymentView({
 
   const costDollars = (details.creditsToBuy / 100).toFixed(2);
   return (
-    <div className="mt-6 rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+    <div className="mt-6 rounded-xl border border-line p-6">
       <h2 className="text-lg font-semibold">Not enough scan credits</h2>
-      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="mt-2 text-sm text-ink-2">
         This scan needs{" "}
         <strong>{details.shortfall.toLocaleString()}</strong> more credits than
         you have. Top up{" "}
         <strong>{details.creditsToBuy.toLocaleString()}</strong> credits ($
         {costDollars}) to continue.
       </p>
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-3 text-sm text-crit">{error}</p>}
       <button
         onClick={pay}
         disabled={paying}
-        className="mt-4 inline-flex h-11 items-center justify-center rounded-full bg-foreground px-6 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+        className="mt-4 inline-flex h-11 items-center justify-center rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         {paying
           ? "Starting checkout…"
@@ -301,7 +312,7 @@ function RerunButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="mt-4 inline-flex h-10 items-center justify-center rounded-full bg-foreground px-5 text-sm font-medium text-background transition-opacity hover:opacity-90"
+      className="mt-4 inline-flex h-10 items-center justify-center rounded-full bg-primary px-5 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90"
     >
       Re-run scan
     </button>
@@ -317,14 +328,14 @@ function RunningView({ snapshot }: { snapshot: AuditSnapshot }) {
     <div className="mt-6">
       <div className="flex items-center gap-3">
         <StatusBadge status="running" />
-        <span className="text-sm text-zinc-500">
+        <span className="text-sm text-ink-2">
           {total === 0 ? "Fetching tweets…" : `Scanning ${processed} of ${total}`}
         </span>
       </div>
 
-      <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+      <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-surface-2">
         <div
-          className="h-full rounded-full bg-foreground transition-all"
+          className="h-full rounded-full bg-primary transition-all"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -384,9 +395,32 @@ function ResultsView({
     setActiveCategories(new Set(allCats));
   }
 
+  // Build StatStrip counts: severity tiers across all flagged posts + clear count.
+  const severityBuckets: Record<DesignSeverity, number> = {
+    clear: 0, low: 0, med: 0, high: 0, crit: 0,
+  };
+  for (const p of allFlaggedPosts) {
+    severityBuckets[postSeverity(p.flags)]++;
+  }
+  severityBuckets.clear = cleanPosts.length;
+
+  const statStripItems = (
+    [
+      { severity: "crit" as DesignSeverity, label: "Critical" },
+      { severity: "high" as DesignSeverity, label: "High" },
+      { severity: "med" as DesignSeverity, label: "Medium" },
+      { severity: "low" as DesignSeverity, label: "Low" },
+      { severity: "clear" as DesignSeverity, label: "Clear ✓" },
+    ] as const
+  ).filter((s) => severityBuckets[s.severity] > 0).map((s) => ({
+    severity: s.severity,
+    label: s.label,
+    count: severityBuckets[s.severity],
+  }));
+
   return (
     <div className="mt-6 space-y-8">
-      <dl className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+      <dl className="divide-y divide-line rounded-xl border border-line">
         <Row label="Status">
           <StatusBadge status="completed" />
         </Row>
@@ -403,6 +437,11 @@ function ResultsView({
         </Row>
       </dl>
 
+      {/* Severity stat strip */}
+      {statStripItems.length > 0 && (
+        <StatStrip stats={statStripItems} />
+      )}
+
       {statEntries.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {statEntries.map(([cat, n]) => {
@@ -413,8 +452,8 @@ function ResultsView({
                 onClick={() => toggleCategory(cat)}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
                   isOn
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-zinc-200 text-zinc-400 hover:border-zinc-400 dark:border-zinc-800 dark:text-zinc-600 dark:hover:border-zinc-600"
+                    ? "border-primary bg-primary text-primary-ink"
+                    : "border-line text-ink-3 hover:border-line-strong"
                 }`}
               >
                 {RISK_LABELS[cat]}
@@ -425,27 +464,27 @@ function ResultsView({
           <button
             onClick={showAll}
             disabled={isAllOn}
-            className="rounded-full border border-zinc-200 px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-30 dark:border-zinc-800 enabled:hover:border-zinc-400 dark:enabled:hover:border-zinc-600"
+            className="rounded-full border border-line px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-30 enabled:hover:border-line-strong"
           >
             Show all
           </button>
         </div>
       )}
 
-      <p className="rounded-lg bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+      <p className="rounded-lg bg-low-soft px-4 py-2 text-xs text-low">
         {live
           ? "Deletion isn’t available yet — review the flagged posts below."
           : "Sample data — sign in with X to scan real tweets. Deletion isn’t available yet; review the flagged posts below."}
       </p>
 
       <section>
-        <h2 className="text-sm font-medium text-zinc-500">
+        <h2 className="text-sm font-medium text-ink-2">
             {isAllOn
             ? `Flagged (${allFlaggedPosts.length})`
             : `Flagged (${visiblePosts.length} of ${allFlaggedPosts.length})`}
         </h2>
         {visiblePosts.length === 0 ? (
-          <p className="mt-3 text-sm text-zinc-500">Nothing flagged. 🎉</p>
+          <p className="mt-3 text-sm text-ink-2">Nothing flagged. 🎉</p>
         ) : (
           <FlaggedList posts={visiblePosts} className="mt-3" />
         )}
@@ -453,16 +492,16 @@ function ResultsView({
 
       {cleanPosts.length > 0 && (
         <details className="group">
-          <summary className="cursor-pointer text-sm font-medium text-zinc-500">
+          <summary className="cursor-pointer text-sm font-medium text-ink-2">
             No issues ({cleanPosts.length})
           </summary>
           <ul className="mt-3 space-y-2">
             {cleanPosts.map((p) => (
               <li
                 key={p.id}
-                className="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 px-4 py-3 text-sm dark:border-zinc-800"
+                className="flex items-center justify-between gap-4 rounded-lg border border-line px-4 py-3 text-sm"
               >
-                <span className="min-w-0 truncate text-zinc-600 dark:text-zinc-400">
+                <span className="min-w-0 truncate text-ink-2">
                   {p.text}
                 </span>
                 <TweetLink url={p.url} />
@@ -475,6 +514,10 @@ function ResultsView({
   );
 }
 
+/**
+ * Full results card list — uses RiskCard for complete post cards with severity
+ * badge, reason chips, meter, and View-on-X action.
+ */
 function FlaggedList({
   posts,
   className = "",
@@ -485,86 +528,67 @@ function FlaggedList({
   compact?: boolean;
 }) {
   if (posts.length === 0) return null;
-  return (
-    <ul className={`space-y-3 ${className}`}>
-      {posts.map((p) => (
-        <li
-          key={p.id}
-          className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800"
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                {p.authorAvatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={p.authorAvatarUrl}
-                    alt={`@${p.authorHandle}`}
-                    className="h-6 w-6 shrink-0 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="h-6 w-6 shrink-0 rounded-full bg-zinc-200 dark:bg-zinc-700" />
-                )}
-                <span className="text-xs text-zinc-400">
-                  @{p.authorHandle} · {formatDate(p.postedAt)}
-                </span>
-              </div>
-              <p className="mt-1 text-sm">{p.text}</p>
-              {p.mediaUrls && p.mediaUrls.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {p.mediaUrls.map((src, i) => (
-                    <a
-                      key={i}
-                      href={src}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={src}
-                        alt={`Media ${i + 1} from @${p.authorHandle}`}
-                        loading="lazy"
-                        className="h-40 max-w-xs rounded-lg border border-zinc-200 object-cover dark:border-zinc-700"
-                      />
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-            <TweetLink url={p.url} />
-          </div>
-          {!compact && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {p.flags.map((f, i) => (
-                <FlagChip key={i} flag={f} />
-              ))}
-            </div>
-          )}
-          {compact && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {dedupeCategories(p.flags).map((f, i) => (
-                <FlagChip key={i} flag={f} labelOnly />
-              ))}
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
 
-function FlagChip({ flag, labelOnly = false }: { flag: Flag; labelOnly?: boolean }) {
+  if (compact) {
+    // Running-view inline compact list (no full RiskCard chrome)
+    return (
+      <ul className={`space-y-2 ${className}`}>
+        {posts.map((p) => (
+          <li
+            key={p.id}
+            className="flex items-start gap-3 rounded-lg border border-line px-4 py-3"
+          >
+            <div className="min-w-0 flex-1">
+              <span className="text-xs text-ink-3">
+                @{p.authorHandle} · {formatDate(p.postedAt)}
+              </span>
+              <p className="mt-0.5 truncate text-sm">{p.text}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {dedupeCategories(p.flags).map((f, i) => (
+                  <span
+                    key={i}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${SEVERITY_STYLES[f.severity]}`}
+                    title={f.reason}
+                  >
+                    {RISK_LABELS[f.category]}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${SEVERITY_STYLES[flag.severity]}`}
-      title={flag.reason}
-    >
-      {RISK_LABELS[flag.category]}
-      {!labelOnly && (
-        <span className="font-normal opacity-80">· {flag.reason}</span>
-      )}
-    </span>
+    <ul className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${className}`}>
+      {posts.map((p) => {
+        const sev = postSeverity(p.flags);
+        const redacted = shouldRedact(p.flags);
+        const reasons = dedupeCategories(p.flags).map((f) => ({
+          label: RISK_LABELS[f.category],
+          severity: SEVERITY_TOKEN[f.severity],
+        }));
+        return (
+          <li key={p.id} className="list-none">
+            <RiskCard
+              name={p.authorHandle}
+              handle={p.authorHandle}
+              date={formatDate(p.postedAt)}
+              avatarUrl={p.authorAvatarUrl}
+              body={p.text}
+              mediaUrls={p.mediaUrls}
+              severity={sev}
+              reasons={reasons}
+              redacted={redacted}
+              redactReason={redactReason(p.flags)}
+              href={p.url}
+            />
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -585,7 +609,7 @@ function TweetLink({ url }: { url: string }) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="shrink-0 whitespace-nowrap text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+      className="shrink-0 whitespace-nowrap text-xs font-medium text-ink-2 hover:underline hover:text-ink"
     >
       View on X ↗
     </a>
@@ -595,7 +619,7 @@ function TweetLink({ url }: { url: string }) {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between px-5 py-3">
-      <dt className="text-sm text-zinc-500">{label}</dt>
+      <dt className="text-sm text-ink-2">{label}</dt>
       <dd className="text-right text-sm">{children}</dd>
     </div>
   );

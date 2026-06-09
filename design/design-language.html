@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en" data-dir="a">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>dontcancel.me — Design Language</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   dontcancel.me — Design Language
+   One system: FLOODLIGHT, switched light/dark via [data-dir] on <html>.
+   a = LIGHT  (pure-white base, siren red)
+   b = DARK   (near-black base, siren red)
+   ============================================================ */
+
+/* ---- FLOODLIGHT · LIGHT ---- */
+[data-dir="a"]{
+  --bg:#FFFFFF;
+  --surface:#FFFFFF;
+  --surface-2:#F4F4F5;
+  --ink:#0A0A0B;
+  --ink-2:#52525B;
+  --ink-3:#A1A1AA;
+  --line:#E7E7EA;
+  --line-strong:#D6D6DB;
+
+  --primary:oklch(0.55 0.21 27);       /* siren red */
+  --primary-soft:oklch(0.95 0.035 25);
+  --primary-ink:#FFFFFF;
+
+  --clear:oklch(0.55 0.13 155);
+  --low:oklch(0.62 0.14 82);
+  --med:oklch(0.60 0.16 55);
+  --high:oklch(0.57 0.20 36);
+  --crit:oklch(0.50 0.21 24);
+
+  --clear-bg:oklch(0.95 0.04 155);
+  --low-bg:oklch(0.96 0.05 90);
+  --med-bg:oklch(0.95 0.06 60);
+  --high-bg:oklch(0.95 0.07 40);
+  --crit-bg:oklch(0.95 0.06 26);
+
+  --font-display:"Space Grotesk", sans-serif;
+  --font-text:"Space Grotesk", sans-serif;
+  --font-mono:"Space Mono", monospace;
+
+  --radius:14px;
+  --radius-sm:10px;
+  --radius-pill:999px;
+
+  --shadow-sm:0 1px 2px rgba(10,10,11,.05), 0 1px 3px rgba(10,10,11,.06);
+  --shadow:0 4px 16px -4px rgba(10,10,11,.10), 0 18px 40px -24px rgba(10,10,11,.22);
+  --display-tracking:-0.02em;
+  --display-weight:700;
+}
+
+/* ---- FLOODLIGHT · DARK ---- */
+[data-dir="b"]{
+  --bg:#0A0A0B;
+  --surface:#141417;
+  --surface-2:#1C1C21;
+  --ink:#F5F5F6;
+  --ink-2:#A2A2AC;
+  --ink-3:#6E6E78;
+  --line:#27272E;
+  --line-strong:#36363F;
+
+  --primary:oklch(0.62 0.23 25);       /* siren red on black */
+  --primary-soft:oklch(0.32 0.11 25);
+  --primary-ink:#FFFFFF;
+
+  --clear:oklch(0.86 0.18 150);
+  --low:oklch(0.88 0.16 96);
+  --med:oklch(0.82 0.16 66);
+  --high:oklch(0.74 0.19 48);
+  --crit:oklch(0.66 0.24 18);
+
+  --clear-bg:oklch(0.30 0.06 150);
+  --low-bg:oklch(0.30 0.05 96);
+  --med-bg:oklch(0.30 0.06 66);
+  --high-bg:oklch(0.32 0.08 40);
+  --crit-bg:oklch(0.33 0.09 24);
+
+  --font-display:"Space Grotesk", sans-serif;
+  --font-text:"Space Grotesk", sans-serif;
+  --font-mono:"Space Mono", monospace;
+
+  --radius:14px;
+  --radius-sm:10px;
+  --radius-pill:999px;
+
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow:0 8px 30px -8px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.02);
+  --display-tracking:-0.02em;
+  --display-weight:700;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  background-color:var(--bg);
+  color:var(--ink);
+  font-family:var(--font-text);
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--primary);color:var(--primary-ink);}
+
+/* ---------- layout ---------- */
+.wrap{max-width:1120px;margin:0 auto;padding:0 40px;}
+section{padding:84px 0;border-top:1px solid var(--line);}
+section:first-of-type{border-top:none;}
+.sec-head{display:flex;align-items:baseline;gap:18px;margin-bottom:40px;}
+.sec-num{font-family:var(--font-mono);font-size:13px;color:var(--ink-3);letter-spacing:.05em;padding-top:4px;}
+.sec-title{font-family:var(--font-display);font-weight:var(--display-weight);font-size:clamp(28px,4vw,44px);letter-spacing:var(--display-tracking);line-height:1.0;}
+.sec-sub{color:var(--ink-2);max-width:62ch;margin-top:14px;font-size:16px;}
+.kicker{font-family:var(--font-mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--primary);}
+
+/* ---------- top bar / toggle ---------- */
+.topbar{
+  position:sticky;top:0;z-index:50;
+  background:color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter:saturate(1.4) blur(14px);
+  border-bottom:1px solid var(--line);
+}
+.topbar-inner{max-width:1120px;margin:0 auto;padding:14px 40px;display:flex;align-items:center;justify-content:space-between;gap:20px;}
+.brandmark{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-weight:var(--display-weight);font-size:18px;letter-spacing:-0.02em;}
+.brandmark .dot{width:10px;height:10px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 0 var(--primary);}
+.toggle{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-pill);padding:4px;gap:2px;}
+.toggle button{
+  font-family:var(--font-mono);font-size:12px;letter-spacing:.04em;
+  border:none;background:transparent;color:var(--ink-2);
+  padding:8px 16px;border-radius:var(--radius-pill);cursor:pointer;transition:all .2s ease;white-space:nowrap;
+}
+.toggle button[aria-pressed="true"]{background:var(--ink);color:var(--bg);}
+[data-dir="b"] .toggle button[aria-pressed="true"]{background:var(--primary);color:var(--primary-ink);}
+
+/* ---------- hero ---------- */
+.hero{padding:96px 0 72px;border-top:none;}
+.hero h1{font-family:var(--font-display);font-weight:700;font-size:clamp(54px,11vw,140px);line-height:0.9;letter-spacing:-0.045em;}
+.hero h1 .me{color:var(--primary);}
+.hero .lede{font-size:clamp(18px,2.4vw,26px);max-width:40ch;margin-top:28px;color:var(--ink);line-height:1.35;}
+.hero .meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:36px;}
+.metachip{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:var(--radius-pill);}
+.hero-tag{position:relative;display:inline-flex;align-items:center;gap:8px;background:var(--primary-soft);color:var(--primary);font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:7px 14px;border-radius:var(--radius-pill);margin-bottom:26px;}
+[data-dir="b"] .hero-tag{color:var(--primary);}
+
+/* ---------- generic cards / grid ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);}
+.grid{display:grid;gap:18px;}
+.cols-2{grid-template-columns:repeat(2,1fr);}
+.cols-3{grid-template-columns:repeat(3,1fr);}
+.cols-4{grid-template-columns:repeat(4,1fr);}
+@media(max-width:820px){.cols-3,.cols-4{grid-template-columns:repeat(2,1fr);}.cols-2{grid-template-columns:1fr;}}
+@media(max-width:560px){.cols-3,.cols-4,.cols-2{grid-template-columns:1fr;}}
+
+/* ---------- swatches ---------- */
+.swatch{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:var(--surface);}
+.swatch .chip{height:96px;}
+.swatch .meta{padding:12px 14px;}
+.swatch .name{font-weight:600;font-size:14px;}
+.swatch .val{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);margin-top:3px;word-break:break-all;}
+.swatch .use{font-size:12px;color:var(--ink-3);margin-top:8px;line-height:1.4;}
+
+/* ---------- severity ---------- */
+.sev-rail{display:flex;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);}
+.sev-rail .seg{flex:1;padding:18px 16px;color:#fff;}
+.sev-rail .seg .lab{font-family:var(--font-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;opacity:.92;}
+.sev-rail .seg .sc{font-family:var(--font-display);font-weight:800;font-size:26px;margin-top:4px;}
+/* dark mode: light-fill segments need dark text; red Critical keeps white */
+[data-dir="b"] .sev-rail .s-clear,
+[data-dir="b"] .sev-rail .s-low,
+[data-dir="b"] .sev-rail .s-med,
+[data-dir="b"] .sev-rail .s-high{color:#0A0A0B;}
+.badge{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:12px;font-weight:500;letter-spacing:.02em;padding:5px 11px;border-radius:var(--radius-pill);border:1px solid transparent;}
+.badge .b-dot{width:7px;height:7px;border-radius:50%;}
+.b-clear{background:var(--clear-bg);color:var(--clear);}
+.b-low{background:var(--low-bg);color:var(--low);}
+.b-med{background:var(--med-bg);color:var(--med);}
+.b-high{background:var(--high-bg);color:var(--high);}
+.b-crit{background:var(--crit-bg);color:var(--crit);}
+[data-dir="a"] .badge{border-color:color-mix(in srgb, currentColor 22%, transparent);}
+
+/* ---------- type specimen ---------- */
+.type-row{display:flex;align-items:baseline;gap:24px;padding:18px 0;border-bottom:1px solid var(--line);}
+.type-row:last-child{border-bottom:none;}
+.type-row .tk{font-family:var(--font-mono);font-size:12px;color:var(--ink-3);width:130px;flex-shrink:0;}
+.type-row .sample{font-family:var(--font-display);letter-spacing:var(--display-tracking);line-height:1.05;}
+.weights{display:flex;gap:26px;flex-wrap:wrap;margin-top:8px;}
+.weights span{font-family:var(--font-display);font-size:28px;}
+
+/* ---------- tokens table ---------- */
+.tok{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:13px;}
+.tok td,.tok th{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);}
+.tok th{color:var(--ink-3);font-weight:500;font-size:11px;letter-spacing:.08em;text-transform:uppercase;}
+.tok td:first-child{color:var(--ink);}
+.tok td:nth-child(2){color:var(--ink-2);}
+.tok .vis{display:inline-block;background:var(--primary);vertical-align:middle;border-radius:4px;}
+
+/* ---------- buttons ---------- */
+.btn{font-family:var(--font-text);font-weight:600;font-size:14px;border-radius:var(--radius-sm);padding:11px 18px;border:1px solid transparent;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:transform .12s ease, filter .15s ease;}
+.btn:active{transform:translateY(1px);}
+.btn-primary{background:var(--primary);color:var(--primary-ink);}
+.btn-primary:hover{filter:brightness(1.06);}
+.btn-secondary{background:var(--surface-2);color:var(--ink);border-color:var(--line-strong);}
+.btn-danger{background:var(--crit);color:#fff;}
+.btn-ghost{background:transparent;color:var(--ink-2);border-color:var(--line-strong);}
+.btn-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;}
+
+/* ---------- inputs / toggle ---------- */
+.field label{display:block;font-size:13px;font-weight:600;margin-bottom:7px;}
+.input{width:100%;font-family:var(--font-text);font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:11px 14px;}
+.input::placeholder{color:var(--ink-3);}
+.input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft);}
+.switch{width:46px;height:26px;border-radius:999px;background:var(--line-strong);position:relative;cursor:pointer;transition:background .2s;flex-shrink:0;}
+.switch.on{background:var(--primary);}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3);}
+.switch.on::after{transform:translateX(20px);}
+
+/* ---------- risk card (core component) ---------- */
+.riskcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column;}
+.riskcard .rc-top{display:flex;align-items:center;gap:12px;padding:16px 16px 0;}
+.rc-avatar{width:40px;height:40px;border-radius:50%;background:var(--surface-2);border:1px solid var(--line);flex-shrink:0;}
+.rc-id{display:flex;flex-direction:column;line-height:1.25;}
+.rc-name{font-weight:700;font-size:14px;}
+.rc-handle{font-size:12.5px;color:var(--ink-3);font-family:var(--font-mono);}
+.rc-sev{margin-left:auto;}
+.rc-body{padding:12px 16px 4px;font-size:15px;line-height:1.45;}
+.rc-redacted{padding:14px 16px;margin:4px 16px 0;border:1px dashed var(--line-strong);border-radius:var(--radius-sm);color:var(--ink-3);font-family:var(--font-mono);font-size:12.5px;background:repeating-linear-gradient(45deg,transparent,transparent 8px,var(--surface-2) 8px,var(--surface-2) 9px);}
+.rc-reasons{display:flex;flex-wrap:wrap;gap:7px;padding:14px 16px 0;}
+.rc-meter{padding:14px 16px;}
+.rc-meter .bar{height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;}
+.rc-meter .fill{height:100%;border-radius:999px;}
+.rc-meter .lab{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-bottom:7px;letter-spacing:.04em;}
+.rc-actions{display:flex;gap:10px;padding:4px 16px 16px;border-top:1px solid var(--line);margin-top:4px;padding-top:14px;}
+.rc-actions .btn{flex:1;justify-content:center;}
+
+/* ---------- filter rule ---------- */
+.rule{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;font-size:14px;}
+.rule .tokn{font-family:var(--font-mono);font-size:12.5px;background:var(--surface-2);border:1px solid var(--line);padding:5px 10px;border-radius:8px;color:var(--ink);}
+.rule .op{color:var(--ink-3);font-family:var(--font-mono);font-size:12px;text-transform:uppercase;letter-spacing:.08em;}
+.rule .val{font-weight:600;color:var(--primary);}
+
+/* ---------- composition mock ---------- */
+.mock{background:var(--bg);border:1px solid var(--line-strong);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
+.mock-bar{display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--line);background:var(--surface);}
+.mock-bar .traffic{display:flex;gap:6px;}
+.mock-bar .traffic i{width:11px;height:11px;border-radius:50%;background:var(--line-strong);display:block;}
+.mock-bar .url{font-family:var(--font-mono);font-size:12px;color:var(--ink-3);background:var(--surface-2);padding:5px 12px;border-radius:var(--radius-pill);flex:1;text-align:center;max-width:260px;}
+.mock-body{padding:22px;}
+.mock-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.mock-head h3{font-family:var(--font-display);font-weight:var(--display-weight);font-size:22px;letter-spacing:-0.02em;}
+.stat-strip{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;flex:1;min-width:120px;}
+.stat .n{font-family:var(--font-display);font-weight:800;font-size:26px;line-height:1;}
+.stat .l{font-size:12px;color:var(--ink-3);margin-top:5px;}
+
+/* ---------- voice ---------- */
+.voice-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:680px){.voice-grid{grid-template-columns:1fr;}}
+.voice-col{padding:22px;border-radius:var(--radius);border:1px solid var(--line);}
+.voice-col.do{background:var(--clear-bg);}
+.voice-col.dont{background:var(--surface-2);}
+.voice-col h4{font-family:var(--font-mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px;}
+.voice-col.do h4{color:var(--clear);}
+.voice-col.dont h4{color:var(--ink-3);}
+.voice-line{font-size:16px;padding:9px 0;border-bottom:1px solid color-mix(in srgb,var(--ink) 8%,transparent);}
+.voice-line:last-child{border-bottom:none;}
+.voice-col.dont .voice-line{color:var(--ink-3);text-decoration:line-through;text-decoration-color:var(--crit);}
+
+/* ---------- principles ---------- */
+.principle{padding:24px;border-radius:var(--radius);border:1px solid var(--line);background:var(--surface);}
+.principle .pn{font-family:var(--font-mono);font-size:12px;color:var(--primary);}
+.principle h4{font-family:var(--font-display);font-weight:var(--display-weight);font-size:20px;margin:10px 0 8px;letter-spacing:-0.01em;}
+.principle p{font-size:14px;color:var(--ink-2);line-height:1.5;}
+
+/* ---------- iconography ---------- */
+.icon-tile{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);}
+.icon-tile svg{width:30px;height:30px;stroke:var(--ink);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
+.emoji-row{display:flex;gap:14px;font-size:30px;flex-wrap:wrap;}
+
+.label{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:14px;}
+.foot{padding:60px 0 90px;color:var(--ink-3);font-family:var(--font-mono);font-size:12.5px;text-align:center;border-top:1px solid var(--line);}
+
+.dir-note{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:30px;display:flex;gap:10px;align-items:center;}
+.dir-note b{color:var(--ink);}
+.dir-note .swap{margin-left:auto;color:var(--primary);cursor:pointer;border:none;background:none;font-family:inherit;font-size:inherit;text-decoration:underline;}
+</style>
+</head>
+<body>
+
+<!-- ===================== TOP BAR ===================== -->
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brandmark"><span class="dot"></span>dontcancel<span style="color:var(--primary)">.me</span></div>
+    <div class="toggle" role="group" aria-label="Choose direction">
+      <button data-set="a" aria-pressed="true">LIGHT</button>
+      <button data-set="b" aria-pressed="false">DARK</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ===================== HERO ===================== -->
+  <section class="hero" data-screen-label="Hero">
+    <span class="hero-tag"><span style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block"></span>Design Language v0.1</span>
+    <h1>dontcancel<span class="me">.me</span></h1>
+    <p class="lede">The visual system for the app that scrubs your risky posts <em>before</em> the internet does it for you.</p>
+    <div class="meta">
+      <span class="metachip">Next.js</span>
+      <span class="metachip">Platform · X / Twitter</span>
+      <span class="metachip">Voice · Reassuring &amp; protective</span>
+      <span class="metachip">Type · Swiss grotesque</span>
+    </div>
+    <div class="dir-note" style="margin-top:34px;">
+      <span>You're viewing <b id="dir-name">LIGHT</b> mode — <span id="dir-desc">Floodlight on pure white. Clean, high-contrast, calm — the daytime face.</span></span>
+      <button class="swap" id="swap-btn">flip light / dark →</button>
+    </div>
+  </section>
+
+  <!-- ===================== 00 PERSONALITY ===================== -->
+  <section data-screen-label="Personality">
+    <div class="sec-head">
+      <span class="sec-num">00</span>
+      <div><span class="kicker">Brand personality</span><h2 class="sec-title">Calm hands, sharp eyes.</h2>
+      <p class="sec-sub">We are the friend who reads your timeline at 3am so you don't have to. Protective, never preachy. We can be a little cheeky about cancel-culture anxiety — but we are dead serious about your back.</p></div>
+    </div>
+    <div class="grid cols-3">
+      <div class="principle"><div class="pn">P1</div><h4>Protective, not scary</h4><p>We surface risk to calm people down, not freak them out. Severity colors inform; copy reassures.</p></div>
+      <div class="principle"><div class="pn">P2</div><h4>Confident &amp; plain</h4><p>Big grotesque type, short sentences, real numbers. No jargon, no fear-mongering, no dark patterns.</p></div>
+      <div class="principle"><div class="pn">P3</div><h4>Cheeky in the margins</h4><p>Wit lives in microcopy and empty states — never in the moment someone is about to delete something.</p></div>
+    </div>
+  </section>
+
+  <!-- ===================== 01 LOGO ===================== -->
+  <section data-screen-label="Logo">
+    <div class="sec-head">
+      <span class="sec-num">01</span>
+      <div><span class="kicker">Wordmark</span><h2 class="sec-title">The dot does the work.</h2>
+      <p class="sec-sub">Lowercase, tight tracking, one weight. The period in <b>.me</b> is the brand's atom — it doubles as the status dot, the scrubber, and the “clear” signal across the product.</p></div>
+    </div>
+    <div class="grid cols-2">
+      <div class="card" style="padding:44px;display:flex;align-items:center;justify-content:center;">
+        <div style="font-family:var(--font-display);font-weight:var(--display-weight);font-size:clamp(28px,5vw,52px);letter-spacing:-0.04em;">dontcancel<span style="color:var(--primary)">.me</span></div>
+      </div>
+      <div class="card" style="padding:44px;display:flex;align-items:center;justify-content:center;gap:18px;background:var(--ink);">
+        <span style="width:18px;height:18px;border-radius:50%;background:var(--primary);"></span>
+        <div style="font-family:var(--font-display);font-weight:var(--display-weight);font-size:clamp(24px,4vw,40px);letter-spacing:-0.04em;color:var(--bg);">dc<span style="color:var(--primary)">.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 02 COLOR ===================== -->
+  <section data-screen-label="Color">
+    <div class="sec-head">
+      <span class="sec-num">02</span>
+      <div><span class="kicker">Color</span><h2 class="sec-title">Core palette.</h2>
+      <p class="sec-sub">A quiet neutral base so the risk colors carry all the meaning. One brand accent. Everything else earns its saturation.</p></div>
+    </div>
+    <div class="grid cols-4">
+      <div class="swatch"><div class="chip" style="background:var(--bg);border-bottom:1px solid var(--line)"></div><div class="meta"><div class="name">Base</div><div class="val" id="v-bg">#FFFFFF</div><div class="use">App background. Pure white / near-black.</div></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--surface);border-bottom:1px solid var(--line)"></div><div class="meta"><div class="name">Surface</div><div class="val" id="v-surface">#FFFFFF</div><div class="use">Cards, sheets, inputs.</div></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--ink)"></div><div class="meta"><div class="name">Ink</div><div class="val" id="v-ink">#0A0A0B</div><div class="use">Primary text &amp; solid buttons.</div></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--primary)"></div><div class="meta"><div class="name">Primary</div><div class="val" id="v-primary">oklch(.55 .21 27)</div><div class="use">Alert / brand / CTA accent.</div></div></div>
+    </div>
+    <div class="grid cols-4" style="margin-top:18px;">
+      <div class="swatch"><div class="chip" style="background:var(--surface-2)"></div><div class="meta"><div class="name">Surface-2</div><div class="val" id="v-surface2">#F4F4F5</div><div class="use">Recessed wells, chips, tracks.</div></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--ink-2)"></div><div class="meta"><div class="name">Ink-2</div><div class="val" id="v-ink2">#52525B</div><div class="use">Secondary text.</div></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--ink-3)"></div><div class="meta"><div class="name">Ink-3</div><div class="val" id="v-ink3">#A1A1AA</div><div class="use">Muted / metadata / mono labels.</div></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--line);border:1px solid var(--line-strong)"></div><div class="meta"><div class="name">Line</div><div class="val" id="v-line">#E7E7EA</div><div class="use">Hairlines &amp; dividers.</div></div></div>
+    </div>
+  </section>
+
+  <!-- ===================== 03 SEVERITY ===================== -->
+  <section data-screen-label="Severity">
+    <div class="sec-head">
+      <span class="sec-num">03</span>
+      <div><span class="kicker">The risk scale</span><h2 class="sec-title">Five levels. One language.</h2>
+      <p class="sec-sub">This is the spine of the product. Every flagged post gets a level; the same five colors appear on badges, meters, the dashboard, and rule outcomes. Never mix in colors outside this scale to express risk.</p></div>
+    </div>
+    <div class="sev-rail">
+      <div class="seg s-clear" style="background:var(--clear)"><div class="lab">00 · Clear</div><div class="sc">Safe</div></div>
+      <div class="seg s-low" style="background:var(--low)"><div class="lab">01 · Low</div><div class="sc">Watch</div></div>
+      <div class="seg s-med" style="background:var(--med)"><div class="lab">02 · Medium</div><div class="sc">Review</div></div>
+      <div class="seg s-high" style="background:var(--high)"><div class="lab">03 · High</div><div class="sc">Risky</div></div>
+      <div class="seg s-crit" style="background:var(--crit)"><div class="lab">04 · Critical</div><div class="sc">Pull it</div></div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:24px;align-items:center;">
+      <span class="badge b-clear"><span class="b-dot" style="background:var(--clear)"></span>Clear</span>
+      <span class="badge b-low"><span class="b-dot" style="background:var(--low)"></span>Low risk</span>
+      <span class="badge b-med"><span class="b-dot" style="background:var(--med)"></span>Medium risk</span>
+      <span class="badge b-high"><span class="b-dot" style="background:var(--high)"></span>High risk</span>
+      <span class="badge b-crit"><span class="b-dot" style="background:var(--crit)"></span>Critical</span>
+    </div>
+    <p class="sec-sub" style="margin-top:26px;">Detection categories map onto the scale — examples: <b>profanity</b> &amp; <b>aged takes</b> trend Low–Medium, <b>insensitive / NSFW</b> trend Medium–High, <b>slurs / hate / doxxing</b> are always Critical.</p>
+  </section>
+
+  <!-- ===================== 04 TYPE ===================== -->
+  <section data-screen-label="Typography">
+    <div class="sec-head">
+      <span class="sec-num">04</span>
+      <div><span class="kicker">Typography</span><h2 class="sec-title" id="type-name">Space Grotesk.</h2>
+      <p class="sec-sub" id="type-desc">A neutral Swiss grotesque. Tight tracking on display, plain in body. Monospace for tokens, metadata, and anything that reads like a machine made it.</p></div>
+    </div>
+    <div class="card" style="padding:14px 28px;">
+      <div class="type-row"><span class="tk">Display / 700</span><span class="sample" style="font-size:clamp(34px,6vw,64px);font-weight:700;">3 posts could get you cancelled</span></div>
+      <div class="type-row"><span class="tk">Title / 600</span><span class="sample" style="font-size:clamp(24px,3.4vw,38px);font-weight:600;">We scanned 4,182 posts</span></div>
+      <div class="type-row"><span class="tk">Heading / 500</span><span class="sample" style="font-size:24px;font-weight:500;">Filter &amp; rules</span></div>
+      <div class="type-row"><span class="tk">Body / 400</span><span class="sample" style="font-family:var(--font-text);font-size:17px;font-weight:400;letter-spacing:0;">Calm, plain sentences. Enough contrast to read fast, never shouty.</span></div>
+      <div class="type-row"><span class="tk">Mono / 500</span><span class="sample" style="font-family:var(--font-mono);font-size:14px;font-weight:500;letter-spacing:0;">SEVERITY · 04 · CRITICAL — pull it</span></div>
+    </div>
+    <div style="margin-top:24px;" class="label">Weights in use</div>
+    <div class="weights">
+      <span style="font-weight:400">Aa 400</span>
+      <span style="font-weight:500">Aa 500</span>
+      <span style="font-weight:600">Aa 600</span>
+      <span style="font-weight:700">Aa 700</span>
+    </div>
+  </section>
+
+  <!-- ===================== 05 TOKENS ===================== -->
+  <section data-screen-label="Tokens">
+    <div class="sec-head">
+      <span class="sec-num">05</span>
+      <div><span class="kicker">Foundations</span><h2 class="sec-title">Spacing, radius, elevation.</h2>
+      <p class="sec-sub">An 8px base grid. Generous radii to feel friendly, not clinical. Shadows stay soft and low — we’re calm software.</p></div>
+    </div>
+    <div class="grid cols-2">
+      <div class="card" style="padding:8px 8px 0;">
+        <table class="tok">
+          <tr><th>Space</th><th>px</th><th></th></tr>
+          <tr><td>--s-1</td><td>4</td><td><span class="vis" style="width:4px;height:14px"></span></td></tr>
+          <tr><td>--s-2</td><td>8</td><td><span class="vis" style="width:8px;height:14px"></span></td></tr>
+          <tr><td>--s-3</td><td>12</td><td><span class="vis" style="width:12px;height:14px"></span></td></tr>
+          <tr><td>--s-4</td><td>16</td><td><span class="vis" style="width:16px;height:14px"></span></td></tr>
+          <tr><td>--s-6</td><td>24</td><td><span class="vis" style="width:24px;height:14px"></span></td></tr>
+          <tr><td>--s-8</td><td>32</td><td><span class="vis" style="width:32px;height:14px"></span></td></tr>
+        </table>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:18px;">
+        <div class="card" style="padding:20px;">
+          <div class="label">Radius</div>
+          <div style="display:flex;gap:14px;align-items:flex-end;">
+            <div style="text-align:center"><div style="width:56px;height:56px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;"></div><div class="val" style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-top:6px">10 · sm</div></div>
+            <div style="text-align:center"><div style="width:56px;height:56px;background:var(--surface-2);border:1px solid var(--line);border-radius:16px;"></div><div class="val" style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-top:6px">16 · md</div></div>
+            <div style="text-align:center"><div style="width:56px;height:56px;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;"></div><div class="val" style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-top:6px">pill</div></div>
+          </div>
+        </div>
+        <div class="card" style="padding:20px;">
+          <div class="label">Elevation</div>
+          <div style="display:flex;gap:18px;">
+            <div style="flex:1;height:56px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-sm);"></div>
+            <div style="flex:1;height:56px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 06 COMPONENTS ===================== -->
+  <section data-screen-label="Components">
+    <div class="sec-head">
+      <span class="sec-num">06</span>
+      <div><span class="kicker">Components</span><h2 class="sec-title">Building blocks.</h2></div>
+    </div>
+
+    <div class="label">Buttons</div>
+    <div class="btn-row" style="margin-bottom:38px;">
+      <button class="btn btn-primary">Protect my account</button>
+      <button class="btn btn-secondary">Run a scan</button>
+      <button class="btn btn-danger">Delete 3 posts</button>
+      <button class="btn btn-ghost">Keep anyway</button>
+    </div>
+
+    <div class="grid cols-2" style="margin-bottom:38px;">
+      <div>
+        <div class="label">Inputs</div>
+        <div class="field" style="margin-bottom:16px;"><label>Search your posts</label><input class="input" placeholder="e.g. keyword, @handle, date…" /></div>
+        <div style="display:flex;align-items:center;gap:12px;"><div class="switch on" id="demo-switch"></div><span style="font-size:14px;">Auto-scrub critical posts on detection</span></div>
+      </div>
+      <div>
+        <div class="label">Badges &amp; chips</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <span class="badge b-crit"><span class="b-dot" style="background:var(--crit)"></span>NSFW</span>
+          <span class="badge b-crit"><span class="b-dot" style="background:var(--crit)"></span>Slur</span>
+          <span class="badge b-high"><span class="b-dot" style="background:var(--high)"></span>Insensitive</span>
+          <span class="badge b-med"><span class="b-dot" style="background:var(--med)"></span>Profanity</span>
+          <span class="badge b-low"><span class="b-dot" style="background:var(--low)"></span>Aged take</span>
+          <span class="badge b-clear"><span class="b-dot" style="background:var(--clear)"></span>Cleared</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="label">Risk card · the core unit</div>
+    <div class="grid cols-2">
+      <!-- low/med card -->
+      <div class="riskcard">
+        <div class="rc-top">
+          <div class="rc-avatar"></div>
+          <div class="rc-id"><span class="rc-name">you</span><span class="rc-handle">@yourhandle · 2019</span></div>
+          <span class="badge b-med rc-sev"><span class="b-dot" style="background:var(--med)"></span>Medium</span>
+        </div>
+        <div class="rc-body">ok but pineapple on pizza is a war crime and i will not be apologizing 🍍</div>
+        <div class="rc-reasons">
+          <span class="badge b-med"><span class="b-dot" style="background:var(--med)"></span>Insensitive</span>
+          <span class="badge b-low"><span class="b-dot" style="background:var(--low)"></span>Aged take</span>
+        </div>
+        <div class="rc-meter">
+          <div class="lab"><span>RISK SCORE</span><span>58 / 100</span></div>
+          <div class="bar"><div class="fill" style="width:58%;background:var(--med)"></div></div>
+        </div>
+        <div class="rc-actions">
+          <button class="btn btn-ghost">Keep</button>
+          <button class="btn btn-secondary">Edit</button>
+          <button class="btn btn-danger">Delete</button>
+        </div>
+      </div>
+      <!-- critical / redacted card -->
+      <div class="riskcard">
+        <div class="rc-top">
+          <div class="rc-avatar"></div>
+          <div class="rc-id"><span class="rc-name">you</span><span class="rc-handle">@yourhandle · 2014</span></div>
+          <span class="badge b-crit rc-sev"><span class="b-dot" style="background:var(--crit)"></span>Critical</span>
+        </div>
+        <div class="rc-redacted">▍ post hidden — flagged for slur. tap to reveal before deleting.</div>
+        <div class="rc-reasons">
+          <span class="badge b-crit"><span class="b-dot" style="background:var(--crit)"></span>Slur</span>
+          <span class="badge b-crit"><span class="b-dot" style="background:var(--crit)"></span>Hate speech</span>
+        </div>
+        <div class="rc-meter">
+          <div class="lab"><span>RISK SCORE</span><span>96 / 100</span></div>
+          <div class="bar"><div class="fill" style="width:96%;background:var(--crit)"></div></div>
+        </div>
+        <div class="rc-actions">
+          <button class="btn btn-ghost">Reveal</button>
+          <button class="btn btn-danger" style="flex:2">Delete now</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="label" style="margin-top:38px;">Filter rule</div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="rule"><span class="op">When</span><span class="tokn">post.category</span><span class="op">is</span><span class="val">Slur · Hate · Doxxing</span><span class="op">→</span><span class="tokn" style="color:var(--crit)">auto-delete</span></div>
+      <div class="rule"><span class="op">When</span><span class="tokn">risk.score</span><span class="op">≥</span><span class="val">70</span><span class="op">and</span><span class="tokn">post.age</span><span class="op">&gt;</span><span class="val">2 yrs</span><span class="op">→</span><span class="tokn">flag for review</span></div>
+    </div>
+  </section>
+
+  <!-- ===================== 07 COMPOSITION ===================== -->
+  <section data-screen-label="Composition">
+    <div class="sec-head">
+      <span class="sec-num">07</span>
+      <div><span class="kicker">Putting it together</span><h2 class="sec-title">Scan results dashboard.</h2>
+      <p class="sec-sub">How the system reads at the screen level: a calm stat strip up top, then a card grid sorted by severity. Color does the triage; the user stays in control.</p></div>
+    </div>
+    <div class="mock">
+      <div class="mock-bar">
+        <div class="traffic"><i></i><i></i><i></i></div>
+        <div class="url">dontcancel.me/scan</div>
+      </div>
+      <div class="mock-body">
+        <div class="mock-head">
+          <h3>We scanned 4,182 posts. <span style="color:var(--primary)">12 need a look.</span></h3>
+          <button class="btn btn-danger">Delete all critical (3)</button>
+        </div>
+        <div class="stat-strip">
+          <div class="stat"><div class="n" style="color:var(--crit)">3</div><div class="l">Critical</div></div>
+          <div class="stat"><div class="n" style="color:var(--high)">4</div><div class="l">High</div></div>
+          <div class="stat"><div class="n" style="color:var(--med)">5</div><div class="l">Medium</div></div>
+          <div class="stat"><div class="n" style="color:var(--clear)">4,170</div><div class="l">Clear ✓</div></div>
+        </div>
+        <div class="grid cols-3">
+          <div class="riskcard"><div class="rc-top"><div class="rc-avatar"></div><div class="rc-id"><span class="rc-name">you</span><span class="rc-handle">· 2014</span></div><span class="badge b-crit rc-sev"><span class="b-dot" style="background:var(--crit)"></span>Crit</span></div><div class="rc-redacted" style="margin-bottom:14px">▍ hidden — slur</div></div>
+          <div class="riskcard"><div class="rc-top"><div class="rc-avatar"></div><div class="rc-id"><span class="rc-name">you</span><span class="rc-handle">· 2018</span></div><span class="badge b-high rc-sev"><span class="b-dot" style="background:var(--high)"></span>High</span></div><div class="rc-body" style="padding-bottom:14px">hot take that did NOT age well…</div></div>
+          <div class="riskcard"><div class="rc-top"><div class="rc-avatar"></div><div class="rc-id"><span class="rc-name">you</span><span class="rc-handle">· 2019</span></div><span class="badge b-med rc-sev"><span class="b-dot" style="background:var(--med)"></span>Med</span></div><div class="rc-body" style="padding-bottom:14px">pineapple on pizza is a war crime 🍍</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 08 ICONOGRAPHY ===================== -->
+  <section data-screen-label="Iconography">
+    <div class="sec-head">
+      <span class="sec-num">08</span>
+      <div><span class="kicker">Iconography &amp; emoji</span><h2 class="sec-title">Line icons. Restrained emoji.</h2>
+      <p class="sec-sub">Outlined, 1.6px stroke, rounded joins — quiet enough to sit next to colored badges. Emoji is allowed (we're internet-native) but only in marketing, empty states and example posts — never as a functional control.</p></div>
+    </div>
+    <div class="grid cols-4" style="margin-bottom:26px;">
+      <div class="icon-tile"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 24 24"><path d="M4 5h16M7 12h10M10 19h4"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 4.3 2.7 18a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 24 24"><path d="M14 9V5a3 3 0 0 0-6 0v4M5 9h14l1 12H4z"/></svg></div>
+    </div>
+    <div class="label">Sanctioned emoji set</div>
+    <div class="emoji-row">🛡️ 🧹 ✨ 😬 🫣 🔥 ⚠️ ✅ 🍍</div>
+  </section>
+
+  <!-- ===================== 09 VOICE ===================== -->
+  <section data-screen-label="Voice">
+    <div class="sec-head">
+      <span class="sec-num">09</span>
+      <div><span class="kicker">Voice &amp; tone</span><h2 class="sec-title">We've got your back.</h2>
+      <p class="sec-sub">Talk like a calm friend who happens to be very good at this. Lead with reassurance, then the facts. Save the wit for the wins.</p></div>
+    </div>
+    <div class="voice-grid">
+      <div class="voice-col do">
+        <h4>✓ Sounds like us</h4>
+        <div class="voice-line">“Found 3 posts worth a second look. No rush — nothing's public-facing yet.”</div>
+        <div class="voice-line">“Cleaned up. Your timeline's looking a lot safer.”</div>
+        <div class="voice-line">“You're in control. We never delete without your okay.”</div>
+        <div class="voice-line">“Nothing risky here. Go touch grass. 🌱”</div>
+      </div>
+      <div class="voice-col dont">
+        <h4>✕ Not us</h4>
+        <div class="voice-line">“WARNING: Your account is at SEVERE RISK!!!”</div>
+        <div class="voice-line">“You posted something problematic.”</div>
+        <div class="voice-line">“Leverage AI-driven reputational risk mitigation.”</div>
+        <div class="voice-line">“lol you're so getting cancelled 💀”</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<div class="foot">dontcancel.me · Design Language v0.1 · Floodlight runs light or dark — flip the toggle to compare. Built for a weekend.</div>
+
+<script>
+const root = document.documentElement;
+const buttons = document.querySelectorAll('.toggle button');
+const meta = {
+  a:{name:'LIGHT', desc:'Floodlight on pure white. Clean, high-contrast, calm — the daytime face.',
+     type:'Space Grotesk.', typedesc:'A grotesque with quirks — characterful enough to feel modern, neutral enough to stay serious. Space Mono carries the machine voice across both modes.',
+     vals:{bg:'#FFFFFF',surface:'#FFFFFF',ink:'#0A0A0B',primary:'oklch(.55 .21 27)',surface2:'#F4F4F5',ink2:'#52525B',ink3:'#A1A1AA',line:'#E7E7EA'}},
+  b:{name:'DARK', desc:'Floodlight on near-black. Siren red, console-tool attitude — the alert face.',
+     type:'Space Grotesk.', typedesc:'A grotesque with quirks — characterful enough to feel modern, neutral enough to stay serious. Space Mono carries the machine voice across both modes.',
+     vals:{bg:'#0A0A0B',surface:'#141417',ink:'#F5F5F6',primary:'oklch(.62 .23 25)',surface2:'#1C1C21',ink2:'#A2A2AC',ink3:'#6E6E78',line:'#27272E'}}
+};
+function setDir(d){
+  root.setAttribute('data-dir', d);
+  buttons.forEach(b=>b.setAttribute('aria-pressed', b.dataset.set===d));
+  const m=meta[d];
+  document.getElementById('dir-name').textContent=m.name;
+  document.getElementById('dir-desc').textContent=m.desc;
+  document.getElementById('type-name').textContent=m.type;
+  document.getElementById('type-desc').textContent=m.typedesc;
+  const v=m.vals;
+  document.getElementById('v-bg').textContent=v.bg;
+  document.getElementById('v-surface').textContent=v.surface;
+  document.getElementById('v-ink').textContent=v.ink;
+  document.getElementById('v-primary').textContent=v.primary;
+  document.getElementById('v-surface2').textContent=v.surface2;
+  document.getElementById('v-ink2').textContent=v.ink2;
+  document.getElementById('v-ink3').textContent=v.ink3;
+  document.getElementById('v-line').textContent=v.line;
+  localStorage.setItem('dc-dir', d);
+}
+buttons.forEach(b=>b.addEventListener('click',()=>setDir(b.dataset.set)));
+document.getElementById('swap-btn').addEventListener('click',()=>setDir(root.getAttribute('data-dir')==='a'?'b':'a'));
+document.getElementById('demo-switch').addEventListener('click',e=>e.currentTarget.classList.toggle('on'));
+setDir(localStorage.getItem('dc-dir')||'a');
+</script>
+</body>
+</html>

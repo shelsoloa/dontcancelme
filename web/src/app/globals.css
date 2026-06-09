@@ -1,26 +1,123 @@
 @import "tailwindcss";
 
+/* Manual light/dark: `dark:` keys off the `.dark` class on <html>, set by the
+   ThemeToggle / anti-FOUC init script (not prefers-color-scheme). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---- FLOODLIGHT · LIGHT (raw vars, mirror Design Language.html) ---- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --ink: #0a0a0b;
+  --ink-2: #52525b;
+  --ink-3: #a1a1aa;
+  --line: #e7e7ea;
+  --line-strong: #d6d6db;
+
+  --primary: oklch(0.55 0.21 27);
+  --primary-soft: oklch(0.95 0.035 25);
+  --primary-ink: #ffffff;
+
+  --clear: oklch(0.55 0.13 155);
+  --low: oklch(0.62 0.14 82);
+  --med: oklch(0.6 0.16 55);
+  --high: oklch(0.57 0.2 36);
+  --crit: oklch(0.5 0.21 24);
+
+  --clear-bg: oklch(0.95 0.04 155);
+  --low-bg: oklch(0.96 0.05 90);
+  --med-bg: oklch(0.95 0.06 60);
+  --high-bg: oklch(0.95 0.07 40);
+  --crit-bg: oklch(0.95 0.06 26);
+
+  --shadow-soft: 0 1px 2px rgba(10, 10, 11, 0.05), 0 1px 3px rgba(10, 10, 11, 0.06);
+  --shadow-elev: 0 4px 16px -4px rgba(10, 10, 11, 0.1),
+    0 18px 40px -24px rgba(10, 10, 11, 0.22);
+
+  /* legacy aliases so any un-migrated bg-foreground/bg-background still resolve */
+  --background: var(--bg);
+  --foreground: var(--ink);
+}
+
+/* ---- FLOODLIGHT · DARK (override raw vars under .dark) ---- */
+.dark {
+  --bg: #0a0a0b;
+  --surface: #141417;
+  --surface-2: #1c1c21;
+  --ink: #f5f5f6;
+  --ink-2: #a2a2ac;
+  --ink-3: #6e6e78;
+  --line: #27272e;
+  --line-strong: #36363f;
+
+  --primary: oklch(0.62 0.23 25);
+  --primary-soft: oklch(0.32 0.11 25);
+  --primary-ink: #ffffff;
+
+  --clear: oklch(0.86 0.18 150);
+  --low: oklch(0.88 0.16 96);
+  --med: oklch(0.82 0.16 66);
+  --high: oklch(0.74 0.19 48);
+  --crit: oklch(0.66 0.24 18);
+
+  --clear-bg: oklch(0.3 0.06 150);
+  --low-bg: oklch(0.3 0.05 96);
+  --med-bg: oklch(0.3 0.06 66);
+  --high-bg: oklch(0.32 0.08 40);
+  --crit-bg: oklch(0.33 0.09 24);
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-elev: 0 8px 30px -8px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* neutrals */
+  --color-bg: var(--bg);
+  --color-background: var(--bg); /* legacy alias */
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-foreground: var(--ink); /* legacy alias */
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* brand */
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-ink: var(--primary-ink);
+
+  /* severity foregrounds */
+  --color-clear: var(--clear);
+  --color-low: var(--low);
+  --color-med: var(--med);
+  --color-high: var(--high);
+  --color-crit: var(--crit);
+
+  /* severity soft tints */
+  --color-clear-soft: var(--clear-bg);
+  --color-low-soft: var(--low-bg);
+  --color-med-soft: var(--med-bg);
+  --color-high-soft: var(--high-bg);
+  --color-crit-soft: var(--crit-bg);
+
+  /* fonts (variables injected by next/font in layout.tsx) */
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-space-mono);
+
+  /* radii — override defaults so existing rounded-lg/-xl adopt design values */
+  --radius-sm: 10px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  /* elevation */
+  --shadow-card: var(--shadow-elev);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans), "Space Grotesk", sans-serif;
 }

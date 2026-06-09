@@ -123,12 +123,12 @@ export function JobCreationForm({
 
   const shownError = localError ?? error ?? null;
   const field =
-    "w-full rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700";
+    "w-full rounded-lg border border-line-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-primary";
 
   return (
     <form onSubmit={handleSubmit} className="mt-8 space-y-6">
       <fieldset className="space-y-4">
-        <legend className="text-sm font-medium text-zinc-500">About you</legend>
+        <legend className="text-sm font-medium text-ink-2">About you</legend>
         <div className="grid grid-cols-2 gap-4">
           <label className="block">
             <span className="mb-1 block text-sm">Age</span>
@@ -159,7 +159,7 @@ export function JobCreationForm({
             </select>
           </label>
         </div>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-ink-2">
           Optional — helps flag targeted risks.
         </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -191,14 +191,14 @@ export function JobCreationForm({
       </fieldset>
 
       <fieldset className="space-y-3">
-        <legend className="text-sm font-medium text-zinc-500">
+        <legend className="text-sm font-medium text-ink-2">
           What should we audit?
         </legend>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {ALL_AUDIT_SOURCES.map((s) => (
             <label
               key={s}
-              className="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
+              className="flex items-center gap-3 rounded-lg border border-line px-3 py-2 text-sm"
             >
               <input
                 type="checkbox"
@@ -214,7 +214,7 @@ export function JobCreationForm({
 
       <fieldset className="space-y-3">
         <div className="flex items-center justify-between">
-          <legend className="text-sm font-medium text-zinc-500">
+          <legend className="text-sm font-medium text-ink-2">
             What should we scan for?
           </legend>
           <label className="flex items-center gap-2 text-sm">
@@ -231,7 +231,7 @@ export function JobCreationForm({
           {ALL_CATEGORIES.map((c) => (
             <label
               key={c}
-              className="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
+              className="flex items-center gap-3 rounded-lg border border-line px-3 py-2 text-sm"
             >
               <input
                 type="checkbox"
@@ -246,7 +246,7 @@ export function JobCreationForm({
       </fieldset>
 
       <details className="group">
-        <summary className="cursor-pointer text-sm font-medium text-zinc-500 select-none">
+        <summary className="cursor-pointer text-sm font-medium text-ink-2 select-none">
           Advanced options
         </summary>
         <fieldset className="mt-4 space-y-3">
@@ -260,19 +260,19 @@ export function JobCreationForm({
               placeholder="No limit"
               className={field}
             />
-            <span className="mt-1 block text-xs text-zinc-500">
+            <span className="mt-1 block text-xs text-ink-2">
               Leave blank to scan all available posts (up to 3,200 per source).
             </span>
           </label>
         </fieldset>
       </details>
 
-      {shownError && <p className="text-sm text-red-600">{shownError}</p>}
+      {shownError && <p className="text-sm text-crit">{shownError}</p>}
 
       <button
         type="submit"
         disabled={submitting}
-        className="inline-flex h-11 items-center justify-center rounded-full bg-foreground px-6 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+        className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         {submitting ? "Starting…" : submitLabel}
       </button>

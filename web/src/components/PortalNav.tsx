@@ -23,8 +23,8 @@ export function PortalNav() {
             href={l.href}
             className={`rounded-lg px-3 py-2 transition-colors ${
               active
-                ? "bg-zinc-100 font-medium dark:bg-zinc-900"
-                : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-900"
+                ? "bg-surface-2 font-medium"
+                : "text-ink-2 hover:bg-surface-2"
             }`}
           >
             {l.label}

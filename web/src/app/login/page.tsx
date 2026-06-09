@@ -20,7 +20,7 @@ export default async function LoginPage() {
         <h1 className="text-center text-2xl font-semibold tracking-tight">
           Sign in
         </h1>
-        <p className="mt-2 text-center text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-2 text-center text-sm text-ink-2">
           Connect your X account to start auditing.
         </p>
         <AuthPanel next="/portal/jobs" className="mt-6" />
