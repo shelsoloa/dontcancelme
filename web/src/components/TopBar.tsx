@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Brandmark } from "./Brandmark";
+import { Button } from "./ui/Button";
 
 /**
  * Landing-page top bar: app name on the left; a Portal button when signed in,
@@ -21,21 +22,16 @@ export async function TopBar() {
           <ThemeToggle />
         </div>
         <nav className="flex items-center gap-3 text-sm">
-          {user ? (
-            <Link
-              href="/portal/jobs"
-              className="inline-flex h-9 items-center justify-center rounded-full bg-primary px-4 font-medium text-primary-ink transition-opacity hover:opacity-90"
-            >
-              Portal
-            </Link>
-          ) : (
-            <Link
-              href="/login"
-              className="inline-flex h-9 items-center justify-center rounded-full border border-line-strong px-4 font-medium transition-colors hover:bg-surface-2"
-            >
-              Login
-            </Link>
-          )}
+          <Button
+            variant="secondary"
+            className="inline-flex h-9 items-center justify-center rounded-full border border-line-strong px-4 font-medium transition-colors hover:bg-surface-2"
+          >
+            {user ? (
+              <Link href="/portal/jobs">Portal</Link>
+            ) : (
+              <Link href="/login">Login</Link>
+            )}
+          </Button>
         </nav>
       </div>
     </header>

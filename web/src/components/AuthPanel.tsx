@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Button } from "./ui/Button";
 
 const DEV_LOGIN = process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "true";
 
@@ -81,16 +82,15 @@ export function AuthPanel({
     "w-full rounded-lg border border-line-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-primary";
 
   return (
-    <div
-      className={`rounded-xl border border-line p-5 ${className}`}
-    >
-      <button
+    <div className={`rounded-xl border border-line p-5 ${className}`}>
+      <Button
+        variant="primary"
         onClick={handleX}
         disabled={submitting}
         className="inline-flex h-11 w-full items-center justify-center rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         Continue with X
-      </button>
+      </Button>
 
       {error && <p className="mt-3 text-sm text-crit">{error}</p>}
 
@@ -119,13 +119,14 @@ export function AuthPanel({
             className={field}
             required
           />
-          <button
+          <Button
+            variant="secondary"
             type="submit"
             disabled={submitting}
             className="inline-flex h-10 w-full items-center justify-center rounded-full border border-line-strong px-6 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-50"
           >
             {submitting ? "Signing in…" : "Sign in / sign up"}
-          </button>
+          </Button>
         </form>
       )}
     </div>
