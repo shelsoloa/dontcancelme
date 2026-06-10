@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getValidToken, resolveConnectionId } from "@/lib/x/oauth";
 import {
   getMe,
@@ -10,14 +9,24 @@ import {
   XApiError,
   type XMe,
 } from "@/lib/x/api";
-import { MIN_CREDITS } from "@/lib/billing";
-import { estimateScannable, parseSources } from "@/lib/x/scannable";
+import { parseSources } from "@/lib/x/scannable";
 import type { AuditSource } from "@/lib/audit/types";
 import type { RawTweet } from "@/lib/audit/sampleTweets";
 
 export const runtime = "nodejs";
 
-/** Fetch the selected sources and combine them, deduped and capped by `limit`. */
+/**
+ * Fetch the selected sources and combine them, deduped and capped by `limit`.
+ *
+ * own_text   → timeline entries with no photo attachments (excludes video-only too)
+ * own_images → timeline entries with at least one photo attachment
+ * reposts    → retweeted content
+ * likes      → liked posts (bulk, up to cap — incremental drain uses /api/x/likes)
+ *
+ * Billing is now pre-charged at runner start via charge_deterministic; this
+ * route does NOT enforce a billing gate. The gate responsibility moved to the
+ * quote → checkout → charge-deterministic flow.
+ */
 async function fetchSources(
   token: string,
   me: XMe,
@@ -25,19 +34,45 @@ async function fetchSources(
   limit?: number | null,
 ): Promise<RawTweet[]> {
   const cap = Math.min(limit ?? MAX_FETCHABLE, MAX_FETCHABLE);
-  const includePosts = sources.includes("posts");
-  const includeReposts = sources.includes("reposts");
+  const includeOwnText    = sources.includes("own_text");
+  const includeOwnImages  = sources.includes("own_images");
+  const includeReposts    = sources.includes("reposts");
+  const includeLikes      = sources.includes("likes");
+
   const all: RawTweet[] = [];
 
-  if (includePosts || includeReposts) {
-    all.push(
-      ...(await listTimeline(token, me.id, me.username, cap, {
-        includePosts,
-        includeReposts,
-      })),
-    );
+  // Own posts (text + images) and reposts all come from the timeline endpoint.
+  // We fetch whenever any own-account source is enabled, then filter below.
+  if (includeOwnText || includeOwnImages || includeReposts) {
+    // Pass `includePosts = true` whenever own_text or own_images is enabled;
+    // `includeReposts` controls whether retweeted content is included.
+    const raw = await listTimeline(token, me.id, me.username, cap, {
+      includePosts: includeOwnText || includeOwnImages,
+      includeReposts,
+    });
+
+    // Filter the fetched timeline based on enabled sources.
+    // The X API doesn't separate text/image tweets server-side, so we do it here.
+    // tweet.hasImages is true only for photo attachments, not video previews.
+    // Repost detection: authorHandle differs from the authenticated user's.
+    for (const tweet of raw) {
+      const isRepost = tweet.authorHandle.toLowerCase() !== me.username.toLowerCase();
+
+      if (isRepost) {
+        if (includeReposts) all.push(tweet);
+      } else if (tweet.hasImages) {
+        if (includeOwnImages) all.push(tweet);
+      } else {
+        // Not a photo tweet. Video-only tweets have a preview in mediaUrls but
+        // no hasImages flag — detect and exclude (videos are unsupported).
+        const isVideoOnly = !tweet.hasImages && (tweet.mediaUrls?.length ?? 0) > 0;
+        if (includeOwnText && !isVideoOnly) all.push(tweet);
+      }
+    }
   }
-  if (sources.includes("likes")) {
+
+  // Likes use a separate endpoint.
+  if (includeLikes) {
     all.push(...(await listLikedTweets(token, me.id, cap)));
   }
 
@@ -49,10 +84,10 @@ async function fetchSources(
 }
 
 /**
- * Live tweet ingestion for an audit job. Resolves the user's X connection,
- * charges the user's scan-credit pool via `charge_job_credits` (idempotent;
- * free-pool first, then purchased balance), then returns the tweets for
- * client-side detection. The gate is enforced HERE, server-side.
+ * Live tweet ingestion for an audit job.
+ * Resolves the user's X connection and returns tweets for client-side detection.
+ * Billing is NOT enforced here — it is handled by the quote → checkout →
+ * charge_deterministic flow. Likes incremental drain uses /api/x/likes instead.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -79,7 +114,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "job not found" }, { status: 404 });
   }
 
-  const sources = parseSources(job.enabled_sources);
+  const sources  = parseSources(job.enabled_sources);
   const scanLimit = typeof job.scan_limit === "number" ? job.scan_limit : null;
 
   const connectionId = await resolveConnectionId(user.id, job.connection_id);
@@ -100,30 +135,6 @@ export async function GET(request: Request) {
   } catch (e) {
     const status = e instanceof XApiError ? 502 : 500;
     return NextResponse.json({ error: "x_api_error" }, { status });
-  }
-
-  const scannable = estimateScannable(me, sources, scanLimit);
-
-  // Charge the user's credit pool. The function is idempotent per job_id:
-  // re-running a job after a previous charge returns 0 immediately.
-  const admin = createAdminClient();
-  const { data: shortfall, error: chargeErr } = await admin.rpc(
-    "charge_job_credits",
-    { p_job_id: jobId, p_user_id: user.id, p_posts: scannable },
-  );
-  if (chargeErr) {
-    return NextResponse.json({ error: "billing_error" }, { status: 500 });
-  }
-  if ((shortfall as number) > 0) {
-    return NextResponse.json(
-      {
-        reason: "insufficient_credits",
-        shortfall: shortfall as number,
-        // Round up to the minimum purchase so the top-up always covers the gap.
-        creditsToBuy: Math.max(MIN_CREDITS, shortfall as number),
-      },
-      { status: 402 },
-    );
   }
 
   try {

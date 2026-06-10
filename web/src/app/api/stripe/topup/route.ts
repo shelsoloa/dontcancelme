@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe";
-import { MIN_CREDITS, BLOCK_SIZE } from "@/lib/billing";
+import { STRIPE_MIN_UNITS } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -29,9 +29,9 @@ export async function POST(request: Request) {
   const credits = Number(body.credits);
   const jobId: string | undefined = body.jobId || undefined;
 
-  if (!Number.isInteger(credits) || credits < MIN_CREDITS) {
+  if (!Number.isInteger(credits) || credits < STRIPE_MIN_UNITS) {
     return NextResponse.json(
-      { error: `credits must be a whole number ≥ ${MIN_CREDITS}` },
+      { error: `credits must be a whole number ≥ ${STRIPE_MIN_UNITS}` },
       { status: 400 },
     );
   }
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
   await admin.from("credit_purchases").insert({
     user_id: user.id,
     credits,
-    blocks: Math.ceil(credits / BLOCK_SIZE),
+    blocks: 0,
     status: "pending",
     stripe_session_id: session.id,
   });

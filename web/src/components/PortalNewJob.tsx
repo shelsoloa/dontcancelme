@@ -22,7 +22,7 @@ export function PortalNewJob({ initial }: { initial?: JobFormInitial }) {
     setError(null);
     const result = await startAudit(payload);
     if ("jobId" in result) {
-      router.push(`/portal/jobs/${result.jobId}`);
+      router.push(`/portal/jobs/${result.jobId}/quote`);
     } else {
       setSubmitting(false);
       setError(result.error);

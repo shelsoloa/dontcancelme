@@ -1,25 +1,23 @@
 /**
  * Scan-credit pricing. Pure — safe to import on the server or client.
  *
+ * Model: 1 credit = 1 US cent. Pricing by tweet type:
+ *   text post / repost = 1 credit  ($0.01)
+ *   image post         = 4 credits ($0.04, mirrors IMAGE_TWEET_WEIGHT)
+ *
  * Free allowance: each user gets FREE_TWEET_LIMIT posts at no cost (lifetime,
- * user-level). Beyond that they purchase credits: MIN_CREDITS minimum,
- * CREDITS_PER_DOLLAR credits per USD (i.e. $0.01 per credit).
+ * user-level, applied to the cheapest (text) bucket first). Beyond that they
+ * purchase credits. The SQL function charge_deterministic mirrors these constants.
  */
 
-/** Lifetime free-post allowance per user. Mirrors the SQL constant in charge_job_credits. */
+/** Lifetime free-post allowance per user. Mirrors v_free_limit in charge_deterministic. */
 export const FREE_TWEET_LIMIT = 500;
-
-/** Smallest credit purchase allowed. */
-export const MIN_CREDITS = 500;
 
 /** Credits per US dollar (rate: $0.01 / credit). */
 export const CREDITS_PER_DOLLAR = 100;
 
-// BLOCK_SIZE kept for the SQL function comment reference only.
-export const BLOCK_SIZE = 500;
-
-/** Number of paid 500-tweet blocks for a scan of `count` tweets (0 if free). */
-export function billableBlocks(count: number): number {
-  if (count <= FREE_TWEET_LIMIT) return 0;
-  return Math.ceil((count - FREE_TWEET_LIMIT) / BLOCK_SIZE);
-}
+/**
+ * Minimum Stripe charge in credits (~50 US cents).
+ * Stripe enforces a $0.50 minimum; below this the session creation fails.
+ */
+export const STRIPE_MIN_UNITS = 50;

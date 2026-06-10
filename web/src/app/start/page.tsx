@@ -49,7 +49,9 @@ export default function StartPage() {
           setInitial({
             age: profile.age != null ? String(profile.age) : "",
             gender: profile.gender ?? "",
-            race: profile.race ?? "",
+            race: profile.race
+              ? profile.race.split(",").map((s: string) => s.trim()).filter(Boolean)
+              : [],
             orientation: profile.sexual_orientation ?? "",
             country: profile.country ?? "",
           });
@@ -76,7 +78,7 @@ export default function StartPage() {
     const result = await startAudit(payload);
     if ("jobId" in result) {
       sessionStorage.removeItem(PENDING_KEY);
-      router.push(`/portal/jobs/${result.jobId}`);
+      router.push(`/portal/jobs/${result.jobId}/quote`);
     } else {
       finalizingRef.current = false;
       setSubmitting(false);

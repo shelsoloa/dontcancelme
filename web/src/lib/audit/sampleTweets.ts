@@ -25,6 +25,13 @@ export type RawTweet = {
    * Absent for sample tweets and posts with no media.
    */
   mediaUrls?: string[];
+  /**
+   * True when the tweet carries at least one photo attachment (type "photo").
+   * Distinct from mediaUrls because videos/GIFs also produce a preview URL.
+   * Used for billing classification: image tweets cost 4× text tweets.
+   * Absent for sample tweets (treated as false / text tweet).
+   */
+  hasImages?: boolean;
   /** Author's profile image URL. Absent for sample tweets. */
   authorAvatarUrl?: string;
 };

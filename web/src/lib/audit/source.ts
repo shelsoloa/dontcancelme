@@ -1,32 +1,28 @@
 /**
- * Tweet source. For X-authenticated users this fetches their real timeline from
- * the server route `/api/x/tweets` (which holds the OAuth token and enforces the
- * billing gate). For everyone else (dev login) it returns {@link SAMPLE_TWEETS}
- * so the flow stays runnable without an X account.
+ * Tweet fetch / charge helpers for the client-side audit runner.
+ *
+ * Deterministic sources (own posts + reposts):
+ *   fetchTweets  → GET /api/x/tweets  (no billing gate; charge happens at
+ *                  runner start via POST /api/x/charge-deterministic)
+ *
+ * Likes (indeterministic, metered):
+ *   fetchLikesPage → GET /api/x/likes?cursor=  (one page, exposes cursor)
+ *   chargeLike     → POST /api/x/likes/charge  (per-item balance debit)
+ *
+ * Non-X / dev-login users get {@link SAMPLE_TWEETS} and bypass all payment.
  */
 
 import { SAMPLE_TWEETS, type RawTweet } from "./sampleTweets";
 
 export type { RawTweet };
 
-export type PaymentRequiredDetails = {
-  shortfall: number;
-  creditsToBuy: number;
-};
-
-/** Thrown when a live scan exceeds the free tweet limit and needs payment. */
-export class PaymentRequiredError extends Error {
-  details: PaymentRequiredDetails;
-  constructor(details: PaymentRequiredDetails) {
-    super("payment_required");
-    this.name = "PaymentRequiredError";
-    this.details = details;
-  }
-}
+// ────────────────────────────────────────────────────────────────────────────
+// Deterministic fetch (own posts, reposts)
+// ────────────────────────────────────────────────────────────────────────────
 
 export type FetchTweetsOptions = { jobId?: string; live?: boolean };
 
-/** Fetch the tweets to audit. Live for X users; sample data otherwise. */
+/** Fetch deterministic tweets for an audit job. Live for X users; sample data otherwise. */
 export async function fetchTweets(
   opts: FetchTweetsOptions = {},
 ): Promise<RawTweet[]> {
@@ -35,13 +31,6 @@ export async function fetchTweets(
       `/api/x/tweets?jobId=${encodeURIComponent(opts.jobId)}`,
       { cache: "no-store" },
     );
-    if (res.status === 402) {
-      const d = await res.json();
-      throw new PaymentRequiredError({
-        shortfall: d.shortfall,
-        creditsToBuy: d.creditsToBuy,
-      });
-    }
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       throw new Error(d.error ?? `Failed to fetch tweets (${res.status})`);
@@ -53,4 +42,78 @@ export async function fetchTweets(
   // Sample-data path: brief delay so the loading state is real.
   await new Promise((r) => setTimeout(r, 250));
   return SAMPLE_TWEETS;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Deterministic charge (called once at runner Phase A start)
+// ────────────────────────────────────────────────────────────────────────────
+
+export type ChargeResult = { shortfall: number };
+
+/**
+ * Charge the user's credit balance for the deterministic portion of a job.
+ * Idempotent (keyed on job_id). Returns shortfall (0 = success).
+ */
+export async function chargeDeterministic(jobId: string): Promise<ChargeResult> {
+  const res = await fetch("/api/x/charge-deterministic", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ jobId }),
+    cache:   "no-store",
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.error ?? `Charge failed (${res.status})`);
+  }
+  return res.json() as Promise<ChargeResult>;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Likes drain helpers (Phase B)
+// ────────────────────────────────────────────────────────────────────────────
+
+export type LikeTweet = RawTweet & { hasImages: boolean };
+
+export type LikesPage = {
+  tweets:     LikeTweet[];
+  nextCursor: string | undefined;
+};
+
+/** Fetch one page of liked tweets. Pass cursor from the previous page's nextCursor. */
+export async function fetchLikesPage(
+  jobId: string,
+  cursor?: string,
+): Promise<LikesPage> {
+  const params = new URLSearchParams({ jobId });
+  if (cursor) params.set("cursor", cursor);
+  const res = await fetch(`/api/x/likes?${params.toString()}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.error ?? `Likes fetch failed (${res.status})`);
+  }
+  return res.json() as Promise<LikesPage>;
+}
+
+/**
+ * Charge the user for one liked tweet. NOT idempotent — call only once per
+ * tweet, after verifying the tweet hasn't already been processed (via cursor).
+ * Returns shortfall (0 = success; >0 = balance insufficient, stop draining).
+ */
+export async function chargeLike(
+  jobId:     string,
+  hasImages: boolean,
+): Promise<ChargeResult> {
+  const res = await fetch("/api/x/likes/charge", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ jobId, hasImages }),
+    cache:   "no-store",
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.error ?? `Like charge failed (${res.status})`);
+  }
+  return res.json() as Promise<ChargeResult>;
 }

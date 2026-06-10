@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { runAudit, type AuditSnapshot } from "@/lib/audit/engine";
-import { loadAudit, saveAudit, type StoredAudit } from "@/lib/audit/storage";
 import {
-  PaymentRequiredError,
-  type PaymentRequiredDetails,
-} from "@/lib/audit/source";
+  runAudit,
+  runLikesDrain,
+  type AuditSnapshot,
+} from "@/lib/audit/engine";
+import { chargeDeterministic } from "@/lib/audit/source";
+import { loadAudit, saveAudit, type StoredAudit } from "@/lib/audit/storage";
 import {
   RISK_LABELS,
   type AuditedPost,
@@ -34,23 +35,25 @@ type JobMeta = {
   createdAt: string;
   startedAt: string | null;
   scanLimit: number | null;
+  likesCap: number | null;
+  likesProcessed: number;
+  likesCursor: string | null;
+  likesEnabled: boolean;
 };
 
 type Phase =
   | { kind: "loading" }
   | { kind: "not_found" }
-  | { kind: "running"; snapshot: AuditSnapshot }
+  | { kind: "running"; snapshot: AuditSnapshot; label: string }
   | { kind: "done"; result: StoredAudit }
-  | { kind: "missing_results" } // job completed elsewhere; no local data
-  | { kind: "payment_required"; details: PaymentRequiredDetails }
+  | { kind: "missing_results" }
+  | { kind: "likes_exhausted"; processedCount: number; likesCap: number }
   | { kind: "error"; message: string };
 
-// Severity → display style is now in lib/audit/severity.ts and the ui/RiskCard/Badge
-// components. Kept minimal here for the compact running-view chip only.
 const SEVERITY_STYLES: Record<Severity, string> = {
-  low: "bg-low-soft text-low",
-  medium: "bg-med-soft text-med",
-  high: "bg-high-soft text-high",
+  low:      "bg-low-soft text-low",
+  medium:   "bg-med-soft text-med",
+  high:     "bg-high-soft text-high",
   critical: "bg-crit-soft text-crit",
 };
 
@@ -69,7 +72,9 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       } = await supabase.auth.getUser();
       const { data: job } = await supabase
         .from("audit_jobs")
-        .select("job_id, status, enabled_categories, created_at, started_at, scan_limit")
+        .select(
+          "job_id, status, enabled_categories, enabled_sources, created_at, started_at, scan_limit, likes_cap, likes_processed, likes_cursor",
+        )
         .eq("job_id", jobId)
         .maybeSingle();
 
@@ -78,9 +83,13 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         return;
       }
 
-      // X-authenticated users scan their real timeline; others get sample data.
       const isLive = user.app_metadata?.provider === "x";
       setLive(isLive);
+
+      const sources: string[] = Array.isArray(job.enabled_sources)
+        ? job.enabled_sources
+        : [];
+      const likesEnabled = sources.includes("likes");
 
       const jobMeta: JobMeta = {
         jobId: job.job_id,
@@ -89,26 +98,54 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         createdAt: job.created_at,
         startedAt: job.started_at,
         scanLimit: typeof job.scan_limit === "number" ? job.scan_limit : null,
+        likesCap: typeof job.likes_cap === "number" ? job.likes_cap : null,
+        likesProcessed:
+          typeof job.likes_processed === "number" ? job.likes_processed : 0,
+        likesCursor:
+          typeof job.likes_cursor === "string" ? job.likes_cursor : null,
+        likesEnabled,
       };
       setMeta(jobMeta);
 
       const existing = loadAudit(jobId);
       if (existing) {
-        setPhase({ kind: "done", result: existing });
+        // Results already in localStorage — but if likes are enabled and the
+        // job was exhausted mid-drain, show the exhaustion UI so the user can
+        // top up and resume.
+        if (
+          existing.status === "completed" &&
+          job.status === "likes_exhausted"
+        ) {
+          setPhase({
+            kind: "likes_exhausted",
+            processedCount: jobMeta.likesProcessed,
+            likesCap: jobMeta.likesCap ?? 0,
+          });
+        } else {
+          setPhase({ kind: "done", result: existing });
+        }
         return;
       }
 
       if (job.status === "completed" || job.status === "failed") {
-        // Results were produced on another device / cleared locally.
         setPhase({ kind: "missing_results" });
+        return;
+      }
+
+      if (job.status === "likes_exhausted") {
+        // Show exhaustion UI so user can top up without re-running Phase A.
+        setPhase({
+          kind: "likes_exhausted",
+          processedCount: jobMeta.likesProcessed,
+          likesCap: jobMeta.likesCap ?? 0,
+        });
         return;
       }
 
       // queued or running with no local results → run it now.
       void start(jobMeta, user.id, isLive, supabase);
     })();
-    // No abort-on-cleanup: under React StrictMode the effect mounts twice, and
-    // aborting here would kill the real run (it finishes + persists regardless).
+    // No abort-on-cleanup: StrictMode double-mounts; aborting would kill the real run.
   }, [jobId]);
 
   async function start(
@@ -123,6 +160,7 @@ export default function JobRunner({ jobId }: { jobId: string }) {
     setPhase({
       kind: "running",
       snapshot: { progress: { total: 0, processed: 0, flagged: 0 }, stats: {}, posts: [] },
+      label: "Fetching tweets…",
     });
 
     await supabase
@@ -131,51 +169,142 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       .eq("job_id", jobMeta.jobId);
 
     try {
-      const result = await runAudit({
+      // ── Phase A: charge + fetch + detect deterministic content ──────────
+      if (isLive) {
+        const chargeResult = await chargeDeterministic(jobMeta.jobId);
+        if (chargeResult.shortfall > 0) {
+          throw new Error(
+            `Insufficient credits (shortfall: ${chargeResult.shortfall}). ` +
+            "Please top up your balance from the account page.",
+          );
+        }
+      }
+
+      const deterministic = await runAudit({
         jobId: jobMeta.jobId,
         userId,
         enabledCategories: jobMeta.enabledCategories,
         live: isLive,
-        // Real scans are slow enough already; the per-tweet delay only exists to
-        // make sample-data progress visible.
         stepDelayMs: isLive ? 0 : undefined,
-        onProgress: (snapshot) => setPhase({ kind: "running", snapshot }),
+        onProgress: (snapshot) =>
+          setPhase({ kind: "running", snapshot, label: "Scanning your posts…" }),
       });
 
+      // ── Phase B: likes drain (if enabled) ────────────────────────────────
+      if (jobMeta.likesEnabled && jobMeta.likesCap && isLive) {
+        setPhase({
+          kind: "running",
+          snapshot: deterministic,
+          label: "Starting liked posts drain…",
+        });
+
+        const drainResult = await runLikesDrain({
+          jobId: jobMeta.jobId,
+          userId,
+          enabledCategories: jobMeta.enabledCategories,
+          likesCap: jobMeta.likesCap,
+          initialCursor:    jobMeta.likesCursor ?? undefined,
+          initialProcessed: jobMeta.likesProcessed,
+          priorPosts:  deterministic.posts,
+          priorStats:  deterministic.stats,
+          onProgress: (snapshot, processedCount) => {
+            setPhase({
+              kind: "running",
+              snapshot,
+              label: `Scanning liked posts (${processedCount} of ${jobMeta.likesCap ?? "??"})…`,
+            });
+          },
+          onExhausted: async (processedCount, nextCursor) => {
+            // Persist the cursor before showing the exhaustion UI.
+            await supabase
+              .from("audit_jobs")
+              .update({
+                status:          "likes_exhausted",
+                likes_processed: processedCount,
+                likes_cursor:    nextCursor ?? null,
+              })
+              .eq("job_id", jobMeta.jobId);
+          },
+        });
+
+        if (drainResult.kind === "exhausted") {
+          // Save whatever we got to localStorage so partial results are visible.
+          const finishedAt = new Date().toISOString();
+          const stored: StoredAudit = {
+            jobId: jobMeta.jobId,
+            status: "completed",
+            posts:    drainResult.snapshot.posts,
+            progress: drainResult.snapshot.progress,
+            stats:    drainResult.snapshot.stats,
+            finishedAt,
+          };
+          saveAudit(stored);
+
+          startedRef.current = false;
+          setPhase({
+            kind: "likes_exhausted",
+            processedCount: drainResult.processedCount,
+            likesCap:       jobMeta.likesCap,
+          });
+          return;
+        }
+
+        // Drain completed — update the job with final likes count.
+        await supabase
+          .from("audit_jobs")
+          .update({
+            likes_processed: drainResult.processedCount,
+            likes_cursor:    null,
+          })
+          .eq("job_id", jobMeta.jobId);
+
+        // Use the final merged snapshot (deterministic + all likes).
+        const finalSnapshot = drainResult.snapshot;
+        const finishedAt   = new Date().toISOString();
+        const stored: StoredAudit = {
+          jobId: jobMeta.jobId,
+          status: "completed",
+          posts:    finalSnapshot.posts,
+          progress: finalSnapshot.progress,
+          stats:    finalSnapshot.stats,
+          finishedAt,
+        };
+        saveAudit(stored);
+        await supabase
+          .from("audit_jobs")
+          .update({
+            status:      "completed",
+            progress:    finalSnapshot.progress,
+            stats:       finalSnapshot.stats,
+            finished_at: finishedAt,
+          })
+          .eq("job_id", jobMeta.jobId);
+        setPhase({ kind: "done", result: stored });
+        return;
+      }
+
+      // ── No likes (or dev mode) — deterministic only ──────────────────────
       const finishedAt = new Date().toISOString();
       const stored: StoredAudit = {
         jobId: jobMeta.jobId,
         status: "completed",
-        posts: result.posts,
-        progress: result.progress,
-        stats: result.stats,
+        posts:    deterministic.posts,
+        progress: deterministic.progress,
+        stats:    deterministic.stats,
         finishedAt,
       };
       saveAudit(stored);
-
       await supabase
         .from("audit_jobs")
         .update({
-          status: "completed",
-          progress: result.progress,
-          stats: result.stats,
+          status:      "completed",
+          progress:    deterministic.progress,
+          stats:       deterministic.stats,
           finished_at: finishedAt,
         })
         .eq("job_id", jobMeta.jobId);
-
       setPhase({ kind: "done", result: stored });
     } catch (err) {
-      if (err instanceof PaymentRequiredError) {
-        // Not a failure — the user just needs to pay. Re-queue so returning
-        // after checkout re-runs the scan (which now passes the gate).
-        await supabase
-          .from("audit_jobs")
-          .update({ status: "queued" })
-          .eq("job_id", jobMeta.jobId);
-        startedRef.current = false;
-        setPhase({ kind: "payment_required", details: err.details });
-        return;
-      }
       const message = err instanceof Error ? err.message : "Audit failed.";
       await supabase
         .from("audit_jobs")
@@ -193,9 +322,40 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (user) {
-        void start(meta, user.id, live, supabase);
-      }
+      if (user) void start(meta, user.id, live, supabase);
+    })();
+  }
+
+  /** Resume likes drain after a top-up. */
+  function resumeLikes() {
+    if (!meta) return;
+    // Re-load the latest cursor from the DB then re-enter start().
+    const supabase = createClient();
+    startedRef.current = false;
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const { data: freshJob } = await supabase
+        .from("audit_jobs")
+        .select("likes_processed, likes_cursor, status")
+        .eq("job_id", meta.jobId)
+        .maybeSingle();
+      if (!user || !freshJob) return;
+
+      const updatedMeta: JobMeta = {
+        ...meta,
+        status:         "queued",
+        likesProcessed: freshJob.likes_processed ?? meta.likesProcessed,
+        likesCursor:    freshJob.likes_cursor ?? meta.likesCursor,
+      };
+      setMeta(updatedMeta);
+      await supabase
+        .from("audit_jobs")
+        .update({ status: "queued" })
+        .eq("job_id", meta.jobId);
+
+      void start(updatedMeta, user.id, live, supabase);
     })();
   }
 
@@ -214,12 +374,12 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       )}
 
       {phase.kind === "not_found" && (
-        <p className="mt-6 text-sm text-ink-2">
-          We couldn’t find that audit.
-        </p>
+        <p className="mt-6 text-sm text-ink-2">We couldn&apos;t find that audit.</p>
       )}
 
-      {phase.kind === "running" && <RunningView snapshot={phase.snapshot} />}
+      {phase.kind === "running" && (
+        <RunningView snapshot={phase.snapshot} label={phase.label} />
+      )}
 
       {phase.kind === "error" && (
         <div className="mt-6">
@@ -233,15 +393,20 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         <div className="mt-6">
           <h2 className="text-lg font-semibold">This run has been cleared</h2>
           <p className="mt-2 text-sm text-ink-2">
-            We never store any of your tweets on our server, so if you cleared
-            your cache, the tweets in this run were cleared too.
+            We never store your tweets on our server. If you cleared your cache,
+            the tweets in this run were cleared too.
           </p>
           <RerunButton onClick={rerun} />
         </div>
       )}
 
-      {phase.kind === "payment_required" && (
-        <PaymentView jobId={jobId} details={phase.details} />
+      {phase.kind === "likes_exhausted" && (
+        <LikesExhaustedView
+          processedCount={phase.processedCount}
+          likesCap={phase.likesCap}
+          jobId={jobId}
+          onResume={resumeLikes}
+        />
       )}
 
       {phase.kind === "done" && meta && (
@@ -251,75 +416,87 @@ export default function JobRunner({ jobId }: { jobId: string }) {
   );
 }
 
-function PaymentView({
-  jobId,
-  details,
-}: {
-  jobId: string;
-  details: PaymentRequiredDetails;
-}) {
-  const [paying, setPaying] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+// ── LikesExhaustedView ────────────────────────────────────────────────────────
 
-  async function pay() {
-    setPaying(true);
-    setError(null);
+function LikesExhaustedView({
+  processedCount,
+  likesCap,
+  jobId,
+  onResume,
+}: {
+  processedCount: number;
+  likesCap: number;
+  jobId: string;
+  onResume: () => void;
+}) {
+  const [toppingUp, setToppingUp] = useState(false);
+  const [topUpError, setTopUpError] = useState<string | null>(null);
+
+  async function topUp() {
+    setToppingUp(true);
+    setTopUpError(null);
     try {
-      const res = await fetch("/api/stripe/topup", {
-        method: "POST",
+      // Use the job-specific checkout route (reads persisted quote for the amount).
+      // If the quote is stale, fall back to the portal account top-up.
+      const res = await fetch("/api/stripe/checkout", {
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credits: details.creditsToBuy, jobId }),
+        body:    JSON.stringify({ jobId }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.url) {
-        window.location.href = data.url;
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.url) {
+        window.location.href = d.url;
         return;
       }
-      setError(data.error ?? "Could not start checkout.");
-      setPaying(false);
+      // Fallback to generic top-up if the job quote is gone.
+      setTopUpError(d.error ?? "Could not start checkout.");
+      setToppingUp(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start checkout.");
-      setPaying(false);
+      setTopUpError(e instanceof Error ? e.message : "Could not start checkout.");
+      setToppingUp(false);
     }
   }
 
-  const costDollars = (details.creditsToBuy / 100).toFixed(2);
   return (
     <div className="mt-6 rounded-xl border border-line p-6">
-      <h2 className="text-lg font-semibold">Not enough scan credits</h2>
+      <h2 className="text-lg font-semibold">Credits ran out</h2>
       <p className="mt-2 text-sm text-ink-2">
-        This scan needs{" "}
-        <strong>{details.shortfall.toLocaleString()}</strong> more credits than
-        you have. Top up{" "}
-        <strong>{details.creditsToBuy.toLocaleString()}</strong> credits ($
-        {costDollars}) to continue.
+        Processed <strong>{processedCount.toLocaleString()}</strong> of up to{" "}
+        <strong>{likesCap.toLocaleString()}</strong> liked posts — credits ran
+        out here. Top up to continue from where we stopped.
       </p>
-      {error && <p className="mt-3 text-sm text-crit">{error}</p>}
-      <button
-        onClick={pay}
-        disabled={paying}
-        className="mt-4 inline-flex h-11 items-center justify-center rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
-      >
-        {paying
-          ? "Starting checkout…"
-          : `Top up ${details.creditsToBuy.toLocaleString()} credits`}
-      </button>
+      {topUpError && <p className="mt-3 text-sm text-crit">{topUpError}</p>}
+      <div className="mt-4 flex flex-wrap gap-3">
+        <button
+          onClick={topUp}
+          disabled={toppingUp}
+          className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {toppingUp ? "Starting checkout…" : "Top up & resume"}
+        </button>
+        <button
+          onClick={onResume}
+          className="inline-flex h-11 items-center justify-center rounded-full border border-line px-6 text-sm font-medium transition-colors hover:border-line-strong"
+        >
+          Resume with current balance
+        </button>
+      </div>
+      <p className="mt-3 text-xs text-ink-2">
+        Results scanned so far are saved. No tweets will be re-scanned.
+      </p>
     </div>
   );
 }
 
-function RerunButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="mt-4 inline-flex h-10 items-center justify-center rounded-full bg-primary px-5 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90"
-    >
-      Re-run scan
-    </button>
-  );
-}
+// ── RunningView ────────────────────────────────────────────────────────────────
 
-function RunningView({ snapshot }: { snapshot: AuditSnapshot }) {
+function RunningView({
+  snapshot,
+  label,
+}: {
+  snapshot: AuditSnapshot;
+  label: string;
+}) {
   const { total, processed, flagged } = snapshot.progress;
   const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
   const remaining = Math.max(total - processed, 0);
@@ -329,7 +506,7 @@ function RunningView({ snapshot }: { snapshot: AuditSnapshot }) {
       <div className="flex items-center gap-3">
         <StatusBadge status="running" />
         <span className="text-sm text-ink-2">
-          {total === 0 ? "Fetching tweets…" : `Scanning ${processed} of ${total}`}
+          {total === 0 ? label : `${label} (${processed} of ${total})`}
         </span>
       </div>
 
@@ -349,7 +526,6 @@ function RunningView({ snapshot }: { snapshot: AuditSnapshot }) {
         </span>
       </div>
 
-      {/* Surface flags as they come in. */}
       <FlaggedList
         posts={snapshot.posts.filter((p) => p.flags.length > 0)}
         className="mt-6"
@@ -358,6 +534,8 @@ function RunningView({ snapshot }: { snapshot: AuditSnapshot }) {
     </div>
   );
 }
+
+// ── ResultsView ────────────────────────────────────────────────────────────────
 
 function ResultsView({
   result,
@@ -376,7 +554,6 @@ function ResultsView({
   const [activeCategories, setActiveCategories] = useState<Set<RiskCategory>>(
     () => new Set(allCats),
   );
-
   const isAllOn = activeCategories.size === allCats.length;
 
   const visiblePosts = allFlaggedPosts.filter((p) =>
@@ -391,11 +568,8 @@ function ResultsView({
     });
   }
 
-  function showAll() {
-    setActiveCategories(new Set(allCats));
-  }
+  function showAll() { setActiveCategories(new Set(allCats)); }
 
-  // Build StatStrip counts: severity tiers across all flagged posts + clear count.
   const severityBuckets: Record<DesignSeverity, number> = {
     clear: 0, low: 0, med: 0, high: 0, crit: 0,
   };
@@ -408,39 +582,35 @@ function ResultsView({
     [
       { severity: "crit" as DesignSeverity, label: "Critical" },
       { severity: "high" as DesignSeverity, label: "High" },
-      { severity: "med" as DesignSeverity, label: "Medium" },
-      { severity: "low" as DesignSeverity, label: "Low" },
+      { severity: "med"  as DesignSeverity, label: "Medium"   },
+      { severity: "low"  as DesignSeverity, label: "Low"      },
       { severity: "clear" as DesignSeverity, label: "Clear ✓" },
     ] as const
-  ).filter((s) => severityBuckets[s.severity] > 0).map((s) => ({
-    severity: s.severity,
-    label: s.label,
-    count: severityBuckets[s.severity],
-  }));
+  )
+    .filter((s) => severityBuckets[s.severity] > 0)
+    .map((s) => ({ severity: s.severity, label: s.label, count: severityBuckets[s.severity] }));
 
   return (
     <div className="mt-6 space-y-8">
       <dl className="divide-y divide-line rounded-xl border border-line">
-        <Row label="Status">
-          <StatusBadge status="completed" />
-        </Row>
-        <Row label="Date started">
-          {formatDate(meta.startedAt ?? meta.createdAt)}
-        </Row>
+        <Row label="Status"><StatusBadge status="completed" /></Row>
+        <Row label="Date started">{formatDate(meta.startedAt ?? meta.createdAt)}</Row>
         <Row label="Scanned">{result.progress.total} tweets</Row>
         <Row label="Flagged">{result.progress.flagged} tweets</Row>
         {meta.scanLimit != null && (
           <Row label="Post limit">{meta.scanLimit.toLocaleString()}</Row>
+        )}
+        {meta.likesCap != null && (
+          <Row label="Likes processed">
+            {meta.likesProcessed.toLocaleString()} of {meta.likesCap.toLocaleString()}
+          </Row>
         )}
         <Row label="Categories">
           {meta.enabledCategories.map((c) => RISK_LABELS[c]).join(", ") || "—"}
         </Row>
       </dl>
 
-      {/* Severity stat strip */}
-      {statStripItems.length > 0 && (
-        <StatStrip stats={statStripItems} />
-      )}
+      {statStripItems.length > 0 && <StatStrip stats={statStripItems} />}
 
       {statEntries.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
@@ -473,13 +643,13 @@ function ResultsView({
 
       <p className="rounded-lg bg-low-soft px-4 py-2 text-xs text-low">
         {live
-          ? "Deletion isn’t available yet — review the flagged posts below."
-          : "Sample data — sign in with X to scan real tweets. Deletion isn’t available yet; review the flagged posts below."}
+          ? "Deletion isn't available yet — review the flagged posts below."
+          : "Sample data — sign in with X to scan real tweets. Deletion isn't available yet; review the flagged posts below."}
       </p>
 
       <section>
         <h2 className="text-sm font-medium text-ink-2">
-            {isAllOn
+          {isAllOn
             ? `Flagged (${allFlaggedPosts.length})`
             : `Flagged (${visiblePosts.length} of ${allFlaggedPosts.length})`}
         </h2>
@@ -492,7 +662,7 @@ function ResultsView({
 
       {cleanPosts.length > 0 && (
         <details className="group">
-          <summary className="cursor-pointer text-sm font-medium text-ink-2">
+          <summary className="cursor-pointer text-sm font-medium text-ink-2 select-none">
             No issues ({cleanPosts.length})
           </summary>
           <ul className="mt-3 space-y-2">
@@ -501,9 +671,7 @@ function ResultsView({
                 key={p.id}
                 className="flex items-center justify-between gap-4 rounded-lg border border-line px-4 py-3 text-sm"
               >
-                <span className="min-w-0 truncate text-ink-2">
-                  {p.text}
-                </span>
+                <span className="min-w-0 truncate text-ink-2">{p.text}</span>
                 <TweetLink url={p.url} />
               </li>
             ))}
@@ -514,10 +682,19 @@ function ResultsView({
   );
 }
 
-/**
- * Full results card list — uses RiskCard for complete post cards with severity
- * badge, reason chips, meter, and View-on-X action.
- */
+// ── Shared sub-components ─────────────────────────────────────────────────────
+
+function RerunButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="mt-4 inline-flex h-10 items-center justify-center rounded-full bg-primary px-5 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90"
+    >
+      Re-run scan
+    </button>
+  );
+}
+
 function FlaggedList({
   posts,
   className = "",
@@ -530,7 +707,6 @@ function FlaggedList({
   if (posts.length === 0) return null;
 
   if (compact) {
-    // Running-view inline compact list (no full RiskCard chrome)
     return (
       <ul className={`space-y-2 ${className}`}>
         {posts.map((p) => (
@@ -564,10 +740,10 @@ function FlaggedList({
   return (
     <ul className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${className}`}>
       {posts.map((p) => {
-        const sev = postSeverity(p.flags);
+        const sev      = postSeverity(p.flags);
         const redacted = shouldRedact(p.flags);
-        const reasons = dedupeCategories(p.flags).map((f) => ({
-          label: RISK_LABELS[f.category],
+        const reasons  = dedupeCategories(p.flags).map((f) => ({
+          label:    RISK_LABELS[f.category],
           severity: SEVERITY_TOKEN[f.severity],
         }));
         return (
@@ -616,7 +792,13 @@ function TweetLink({ url }: { url: string }) {
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between px-5 py-3">
       <dt className="text-sm text-ink-2">{label}</dt>

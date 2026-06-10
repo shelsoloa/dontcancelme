@@ -40,20 +40,46 @@ export enum RiskCategory {
 }
 
 /**
- * Which kinds of timeline content an audit pulls. An audit can combine several:
- * the user's own posts, posts they've liked, and posts they've reposted.
+ * Which kinds of timeline content an audit pulls.
+ *
+ * own_text   — the user's own text-only posts (no photo attachments).
+ * own_images — the user's own posts that carry photos (billed at 4× text rate).
+ *              Videos are NOT supported and are excluded from both buckets.
+ * reposts    — the user's reposts (billed at text rate).
+ * likes      — posts the user has liked (indeterministic; drained from balance).
  */
-export type AuditSource = "posts" | "likes" | "reposts";
+export type AuditSource = "own_text" | "own_images" | "likes" | "reposts";
 
 /** All audit sources, in display order. */
-export const ALL_AUDIT_SOURCES: AuditSource[] = ["posts", "likes", "reposts"];
+export const ALL_AUDIT_SOURCES: AuditSource[] = [
+  "own_text",
+  "own_images",
+  "likes",
+  "reposts",
+];
 
 /** Human-readable labels for the audit sources. */
 export const AUDIT_SOURCE_LABELS: Record<AuditSource, string> = {
-  posts: "Your posts",
-  likes: "Liked posts",
-  reposts: "Reposts",
+  own_text:   "Your text posts",
+  own_images: "Your image posts",
+  reposts:    "Reposts",
+  likes:      "Liked posts",
 };
+
+/** Credit weight per tweet type. Image tweets cost 4× a text/repost tweet. */
+export const IMAGE_TWEET_WEIGHT = 4;
+
+/** Sources that can be quoted exactly up-front (own account content). */
+export const DETERMINISTIC_SOURCES: AuditSource[] = [
+  "own_text",
+  "own_images",
+  "reposts",
+];
+
+/** Returns true for sources we can produce a firm quote for. */
+export function isDeterministic(s: AuditSource): boolean {
+  return DETERMINISTIC_SOURCES.includes(s);
+}
 
 /** Human-readable labels for display. Keep in sync with {@link RiskCategory}. */
 export const RISK_LABELS: Record<RiskCategory, string> = {
@@ -212,8 +238,8 @@ export type DeletionLogEntry = {
  */
 export type Profile = {
   userId: string;
-  age: number;
-  gender: string;
+  age?: number;
+  gender?: string;
   race?: string;
   sexualOrientation?: string;
   country?: string;
