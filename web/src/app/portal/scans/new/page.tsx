@@ -4,10 +4,10 @@ import { PortalNewJob } from "@/components/PortalNewJob";
 import type { JobFormInitial } from "@/components/JobCreationForm";
 
 /**
- * New audit, from inside the portal. Prefills demographics from the user's saved
+ * New scan, from inside the portal. Prefills demographics from the user's saved
  * profile so they only pick categories. The proxy gates `/portal/*` behind auth.
  */
-export default async function NewJobPage() {
+export default async function NewScanPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -38,10 +38,10 @@ export default async function NewJobPage() {
 
   return (
     <main className="mx-auto w-full max-w-xl flex-1 px-6 py-10">
-      <Link href="/portal/jobs" className="text-sm text-ink-2 hover:underline">
-        ← Back to audits
+      <Link href="/portal/scans" className="text-sm text-ink-2 hover:underline">
+        ← Back to scans
       </Link>
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight">New audit</h1>
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight">New scan</h1>
       <p className="mt-2 text-sm text-ink-2">
         Confirm your details and pick what to scan for.
       </p>

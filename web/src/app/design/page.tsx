@@ -331,7 +331,7 @@ export default function DesignPage() {
                 ))}
               </div>
               <span className="mx-auto max-w-[260px] flex-1 rounded-full bg-surface-2 px-3 py-[5px] text-center font-mono text-[12px] text-ink-3">
-                dontcancel.me/portal/jobs/…
+                dontcancel.me/portal/scans/…
               </span>
             </div>
 

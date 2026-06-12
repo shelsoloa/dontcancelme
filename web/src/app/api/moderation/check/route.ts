@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { moderateBatch } from "@/lib/moderation/pipeline";
+import { moderateBatch } from "@/lib/audit/moderation/pipeline";
 
 export const runtime = "nodejs";
 
@@ -32,7 +32,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "missing jobId" }, { status: 400 });
   }
   if (!Array.isArray(items)) {
-    return NextResponse.json({ error: "items must be an array" }, { status: 400 });
+    return NextResponse.json(
+      { error: "items must be an array" },
+      { status: 400 },
+    );
   }
   if (items.length > 50) {
     return NextResponse.json(

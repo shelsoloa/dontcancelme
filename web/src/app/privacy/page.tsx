@@ -30,7 +30,6 @@ export default function PrivacyPage() {
         </h1>
 
         <div className="mt-10 divide-y divide-line">
-
           {/* Short version */}
           <section className="pb-8">
             <H2>The short version</H2>
@@ -47,14 +46,14 @@ export default function PrivacyPage() {
           <section className="py-8">
             <H2>What we store</H2>
             <P>
-              The only personal data we keep is your <strong>email address</strong>,
-              held by our auth provider (Supabase) so you can sign in. If you
-              connect via X (Twitter) OAuth instead, we store your X account
-              identifier in the same way — no password is ever created or stored
-              on our end.
+              The only personal data we keep is your{" "}
+              <strong>email address</strong>, held by our auth provider
+              (Supabase) so you can sign in. If you connect via X (Twitter)
+              OAuth instead, we store your X account identifier in the same way
+              — no password is ever created or stored on our end.
             </P>
             <P>
-              We also store a record of each audit job you run (when it started,
+              We also store a record of each scan job you run (when it started,
               how many posts were scanned, how many were flagged) so you can
               return to the results list. We do <strong>not</strong> store the
               content of your posts anywhere on our servers.
@@ -66,10 +65,10 @@ export default function PrivacyPage() {
             <H2>Your posts &amp; tweets</H2>
             <P>
               When you run a scan, your posts are fetched from the X API and
-              processed on our backend to detect risky content. They pass through
-              our servers but are <strong>never saved there</strong>. The full
-              scan results — every post, every flag — are written only to your
-              browser&apos;s local storage on your device.
+              processed on our backend to detect risky content. They pass
+              through our servers but are <strong>never saved there</strong>.
+              The full scan results — every post, every flag — are written only
+              to your browser&apos;s local storage on your device.
             </P>
             <P>
               This means if you clear your browser cache, your results are gone.
@@ -94,11 +93,11 @@ export default function PrivacyPage() {
             <H2>Analytics</H2>
             <P>
               We use <strong>Vercel Analytics</strong> for basic, anonymous
-              page-view counts and session duration. There is no Google Analytics
-              on this site. Vercel Analytics does not track you across other
-              sites, does not build ad profiles, and does not do any attribution
-              or remarketing. It tells us roughly how many people visited a page —
-              that&apos;s all.
+              page-view counts and session duration. There is no Google
+              Analytics on this site. Vercel Analytics does not track you across
+              other sites, does not build ad profiles, and does not do any
+              attribution or remarketing. It tells us roughly how many people
+              visited a page — that&apos;s all.
             </P>
           </section>
 
@@ -114,7 +113,6 @@ export default function PrivacyPage() {
               If you have questions, find <strong>@shelsoloa</strong> on X.
             </P>
           </section>
-
         </div>
       </main>
       <Footer />

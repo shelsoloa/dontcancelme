@@ -13,5 +13,5 @@ export async function deleteJob(jobId: string) {
     .from("audit_jobs")
     .update({ deleted_at: new Date().toISOString() })
     .eq("job_id", jobId);
-  revalidatePath("/portal/jobs");
+  revalidatePath("/portal/scans");
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { auditName, StatusBadge } from "@/components/CardList";
+import { scanName, StatusBadge } from "@/components/CardList";
 import { RISK_LABELS, type RiskCategory } from "@/lib/audit/types";
 import { deleteJob } from "./actions";
 
@@ -10,7 +10,7 @@ function categoryLabels(codes: string[] | null): string[] {
     .filter((label): label is string => Boolean(label));
 }
 
-export default async function JobsPage() {
+export default async function ScansPage() {
   const supabase = await createClient();
   const { data: jobs } = await supabase
     .from("audit_jobs")
@@ -21,19 +21,19 @@ export default async function JobsPage() {
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Your audits</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Your scans</h1>
         <Link
-          href="/portal/jobs/new"
+          href="/portal/scans/new"
           className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-primary px-5 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90"
         >
-          New audit
+          New scan
         </Link>
       </div>
 
       {!jobs || jobs.length === 0 ? (
         <p className="mt-6 text-sm text-ink-2">
-          No audits yet.{" "}
-          <Link href="/portal/jobs/new" className="underline">
+          No scans yet.{" "}
+          <Link href="/portal/scans/new" className="underline">
             Start one
           </Link>
           .
@@ -53,12 +53,12 @@ export default async function JobsPage() {
             return (
               <li key={j.job_id} className="flex items-stretch gap-2">
                 <Link
-                  href={`/portal/jobs/${j.job_id}`}
+                  href={`/portal/scans/${j.job_id}`}
                   className="flex min-w-0 flex-1 items-start justify-between gap-4 rounded-xl border border-line px-5 py-4 transition-colors hover:bg-surface-2"
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium">
-                      {auditName(j.created_at)}
+                      {scanName(j.created_at)}
                     </p>
                     <p className="text-sm text-ink-2">
                       {hasStats
@@ -84,7 +84,7 @@ export default async function JobsPage() {
                 <form action={deleteJob.bind(null, j.job_id)}>
                   <button
                     type="submit"
-                    aria-label="Delete audit"
+                    aria-label="Delete scan"
                     className="flex h-full items-center justify-center rounded-xl border border-line px-3.5 text-ink-3 transition-colors hover:border-crit/40 hover:bg-crit-soft hover:text-crit"
                   >
                     ✕

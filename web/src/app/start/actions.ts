@@ -1,7 +1,11 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { RiskCategory, ALL_AUDIT_SOURCES, type AuditSource } from "@/lib/audit/types";
+import {
+  RiskCategory,
+  ALL_AUDIT_SOURCES,
+  type AuditSource,
+} from "@/lib/audit/types";
 
 type ProfileInput = {
   age?: number;
@@ -27,7 +31,7 @@ export type StartAuditInput = {
 export type StartAuditResult = { jobId: string } | { error: string };
 
 /**
- * Upserts the user's demographic profile and queues an audit job. RLS enforces
+ * Upserts the user's demographic profile and queues a scan job. RLS enforces
  * that both rows belong to the authenticated user.
  */
 export async function startAudit(
@@ -37,18 +41,18 @@ export async function startAudit(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { error: "You must be signed in to start an audit." };
+  if (!user) return { error: "You must be signed in to start a scan." };
 
   const valid = new Set<string>(Object.values(RiskCategory));
   const categories = input.categories.filter((c) => valid.has(c));
   if (categories.length === 0) {
-    return { error: "Select at least one category to audit." };
+    return { error: "Select at least one category to scan." };
   }
 
   const validSources = new Set<string>(ALL_AUDIT_SOURCES);
   const sources = input.sources.filter((s) => validSources.has(s));
   if (sources.length === 0) {
-    return { error: "Select at least one thing to audit." };
+    return { error: "Select at least one thing to scan." };
   }
   if (
     input.limit !== undefined &&
@@ -80,7 +84,7 @@ export async function startAudit(
   });
   if (profileErr) return { error: profileErr.message };
 
-  // Link the user's X connection (if any) so the audit can ingest live tweets.
+  // Link the user's X connection (if any) so the scan can ingest live tweets.
   const { data: connection } = await supabase
     .from("connections")
     .select("id")
@@ -106,7 +110,7 @@ export async function startAudit(
     .select("job_id")
     .single();
   if (jobErr || !job) {
-    return { error: jobErr?.message ?? "Could not create the audit job." };
+    return { error: jobErr?.message ?? "Could not start the scan job." };
   }
 
   return { jobId: job.job_id as string };

@@ -55,8 +55,8 @@ export async function POST(request: Request) {
   const credits = Math.max(quote.totalUpfrontUnits, STRIPE_MIN_UNITS);
 
   const origin = new URL(request.url).origin;
-  const successUrl = `${origin}/portal/jobs/${jobId}?paid=1`;
-  const cancelUrl  = `${origin}/portal/jobs/${jobId}/quote`;
+  const successUrl = `${origin}/portal/scans/${jobId}?paid=1`;
+  const cancelUrl = `${origin}/portal/scans/${jobId}/quote`;
 
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
@@ -73,22 +73,22 @@ export async function POST(request: Request) {
       },
     ],
     success_url: successUrl,
-    cancel_url:  cancelUrl,
+    cancel_url: cancelUrl,
     metadata: {
       user_id: user.id,
       // "topup" so the existing webhook + apply_credit_purchase need no changes.
-      type:    "topup",
+      type: "topup",
       credits: String(credits),
-      job_id:  jobId,
+      job_id: jobId,
     },
   });
 
   const admin = createAdminClient();
   await admin.from("credit_purchases").insert({
-    user_id:           user.id,
+    user_id: user.id,
     credits,
-    blocks:            0, // legacy column; no longer meaningful
-    status:            "pending",
+    blocks: 0, // legacy column; no longer meaningful
+    status: "pending",
     stripe_session_id: session.id,
   });
 

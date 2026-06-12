@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 const LINKS = [
   { href: "/portal/account", label: "Account" },
-  { href: "/portal/jobs", label: "Jobs" },
+  { href: "/portal/scans", label: "Scans" },
   { href: "/portal/settings", label: "Settings" },
 ];
 
@@ -15,8 +15,7 @@ export function PortalNav() {
   return (
     <nav className="flex flex-col gap-1 text-sm">
       {LINKS.map((l) => {
-        const active =
-          pathname === l.href || pathname.startsWith(`${l.href}/`);
+        const active = pathname === l.href || pathname.startsWith(`${l.href}/`);
         return (
           <Link
             key={l.href}

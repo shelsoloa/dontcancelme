@@ -2,7 +2,7 @@
  * Compile the Surge AI Obscenity List CSV into a JSON wordlist used by gate.ts.
  *
  * Run: pnpm build:wordlist  (tsx scripts/compile-wordlist.ts)
- * Output: src/lib/moderation/data/wordlist.json (commit this file)
+ * Output: src/lib/audit/moderation/data/wordlist.json (commit this file)
  *
  * CSV columns: text, canonical_form_1..3, category_1..3,
  *              severity_rating, severity_description
@@ -23,11 +23,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const CSV_PATH = path.join(
   __dirname,
-  "../src/lib/moderation/data/profanity_en.csv",
+  "../src/lib/audit/moderation/data/profanity_en.csv",
 );
 const OUT_PATH = path.join(
   __dirname,
-  "../src/lib/moderation/data/wordlist.json",
+  "../src/lib/audit/moderation/data/wordlist.json",
 );
 
 async function main() {

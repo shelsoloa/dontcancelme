@@ -6,40 +6,40 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
 type DeterministicQuote = {
-  textCount:   number;
-  imageCount:  number;
+  textCount: number;
+  imageCount: number;
   repostCount: number;
   freeApplied: number;
-  units:       number;
-  usd:         string;
+  units: number;
+  usd: string;
 };
 
 type LikesQuote = {
-  enabled:              boolean;
-  capN:                 number | null;
+  enabled: boolean;
+  capN: number | null;
   suggestedBundleUnits: number;
-  suggestedBundleUsd:   string;
-  metered:              true;
+  suggestedBundleUsd: string;
+  metered: true;
 };
 
 type Quote = {
-  deterministic:     DeterministicQuote;
-  likes:             LikesQuote;
+  deterministic: DeterministicQuote;
+  likes: LikesQuote;
   totalUpfrontUnits: number;
-  totalUpfrontUsd:   string;
-  currentBalance:    number;
+  totalUpfrontUsd: string;
+  currentBalance: number;
 };
 
 type ViewPhase =
   | { kind: "loading" }
-  | { kind: "not_live" }         // dev user — skip to runner
+  | { kind: "not_live" } // dev user — skip to runner
   | { kind: "error"; message: string }
   | { kind: "rate_limited"; retryAfterSeconds: number }
   | { kind: "ready"; quote: Quote }
   | { kind: "paying" };
 
 /**
- * QuoteView — client component for the /portal/jobs/[jobId]/quote route.
+ * QuoteView — client component for the /portal/scans/[jobId]/quote route.
  *
  * Calls POST /api/quote to compute and persist the job's price quote, then
  * renders it for the user to review before checkout. X-unauthenticated (dev)
@@ -61,15 +61,15 @@ export default function QuoteView({ jobId }: { jobId: string }) {
       const isLive = user?.app_metadata?.provider === "x";
       if (!isLive) {
         // Redirect directly to the runner — no quote, no payment needed.
-        router.replace(`/portal/jobs/${jobId}`);
+        router.replace(`/portal/scans/${jobId}`);
         return;
       }
 
       try {
         const res = await fetch("/api/quote", {
-          method:  "POST",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ jobId }),
+          body: JSON.stringify({ jobId }),
         });
         if (res.status === 429) {
           const d = await res.json().catch(() => ({}));
@@ -87,18 +87,18 @@ export default function QuoteView({ jobId }: { jobId: string }) {
           });
           return;
         }
-        const quote = await res.json() as Quote;
+        const quote = (await res.json()) as Quote;
 
         // If the job is entirely free (0 units needed), skip straight to runner.
         if (quote.totalUpfrontUnits === 0) {
-          router.replace(`/portal/jobs/${jobId}`);
+          router.replace(`/portal/scans/${jobId}`);
           return;
         }
 
         // If the user's current balance already covers the whole quote, also
         // skip checkout (charge_deterministic at runner-start will deduct it).
         if (quote.currentBalance >= quote.totalUpfrontUnits) {
-          router.replace(`/portal/jobs/${jobId}`);
+          router.replace(`/portal/scans/${jobId}`);
           return;
         }
 
@@ -118,9 +118,9 @@ export default function QuoteView({ jobId }: { jobId: string }) {
     setPayError(null);
     try {
       const res = await fetch("/api/stripe/checkout", {
-        method:  "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ jobId }),
+        body: JSON.stringify({ jobId }),
       });
       const d = await res.json().catch(() => ({}));
       if (res.ok && d.url) {
@@ -137,14 +137,14 @@ export default function QuoteView({ jobId }: { jobId: string }) {
 
   return (
     <main className="mx-auto w-full max-w-xl flex-1 px-6 py-12">
-      <Link href="/portal/jobs" className="text-sm text-ink-2 hover:underline">
-        ← Back to audits
+      <Link href="/portal/scans" className="text-sm text-ink-2 hover:underline">
+        ← Back to scans
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">
         Review your quote
       </h1>
       <p className="mt-2 text-sm text-ink-2">
-        Pay once — your credits are yours to keep and use across audits.
+        Pay once — your credits are yours to keep and use across scans.
       </p>
 
       {phase.kind === "loading" && (
@@ -155,10 +155,10 @@ export default function QuoteView({ jobId }: { jobId: string }) {
         <div className="mt-8 rounded-xl border border-line p-6">
           <p className="text-sm text-crit">{phase.message}</p>
           <Link
-            href="/portal/jobs"
+            href="/portal/scans"
             className="mt-4 inline-block text-sm text-ink-2 hover:underline"
           >
-            Back to audits
+            Back to scans
           </Link>
         </div>
       )}
@@ -167,8 +167,8 @@ export default function QuoteView({ jobId }: { jobId: string }) {
         <div className="mt-8 rounded-xl border border-line p-6">
           <h2 className="text-base font-semibold">Quote limit reached</h2>
           <p className="mt-2 text-sm text-ink-2">
-            You&apos;ve requested too many quotes in a short window. Try again in{" "}
-            {phase.retryAfterSeconds} seconds.
+            You&apos;ve requested too many quotes in a short window. Try again
+            in {phase.retryAfterSeconds} seconds.
           </p>
         </div>
       )}
@@ -287,20 +287,20 @@ function QuoteDetails({
           <span>${quote.totalUpfrontUsd}</span>
         </div>
         <p className="mt-1 text-xs text-ink-2">
-          {quote.totalUpfrontUnits.toLocaleString()} credits ·{" "}
-          unused credits stay in your balance.
+          {quote.totalUpfrontUnits.toLocaleString()} credits · unused credits
+          stay in your balance.
         </p>
 
-        {payError && (
-          <p className="mt-3 text-sm text-crit">{payError}</p>
-        )}
+        {payError && <p className="mt-3 text-sm text-crit">{payError}</p>}
 
         <button
           onClick={onPay}
           disabled={paying}
           className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {paying ? "Redirecting to checkout…" : `Pay $${quote.totalUpfrontUsd} & start scan`}
+          {paying
+            ? "Redirecting to checkout…"
+            : `Pay $${quote.totalUpfrontUsd} & start scan`}
         </button>
       </div>
     </div>

@@ -34,10 +34,10 @@ export function formatDate(date?: string | null) {
   return new Date(date).toLocaleString();
 }
 
-/** An audit's display name is its creation date + time, e.g. "Audit Jun 7, 2026, 3:42 PM". */
-export function auditName(createdAt?: string | null) {
-  if (!createdAt) return "Audit";
-  return `Audit ${new Date(createdAt).toLocaleString(undefined, {
+/** A scan's display name is its creation date + time, e.g. "Scan Jun 7, 2026, 3:42 PM". */
+export function scanName(createdAt?: string | null) {
+  if (!createdAt) return "Scan";
+  return `Scan ${new Date(createdAt).toLocaleString(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   })}`;
@@ -79,7 +79,9 @@ export function CardList({
             <div className="flex shrink-0 flex-col items-end gap-1">
               {item.status && <StatusBadge status={item.status} />}
               {item.date && (
-                <span className="text-xs text-ink-3">{formatDate(item.date)}</span>
+                <span className="text-xs text-ink-3">
+                  {formatDate(item.date)}
+                </span>
               )}
             </div>
           </Link>

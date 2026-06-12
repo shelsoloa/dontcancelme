@@ -9,7 +9,7 @@ export default async function LoginPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (user) redirect("/portal/jobs");
+  if (user) redirect("/portal/scans");
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
@@ -19,9 +19,9 @@ export default async function LoginPage() {
           Sign in
         </h1>
         <p className="mt-2 text-center text-sm text-ink-2">
-          Connect your X account to start auditing.
+          Connect your X account to start cleaning up your footprint.
         </p>
-        <AuthPanel next="/portal/jobs" className="mt-6" />
+        <AuthPanel next="/portal/scans" className="mt-6" />
       </div>
     </main>
   );

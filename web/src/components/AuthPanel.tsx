@@ -11,14 +11,14 @@ const DEV_LOGIN = process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "true";
  * X login/signup widget (+ env-gated dev login for local testing). Shared by the
  * `/login` page and the `/start` audit gate.
  *
- * - `next`: where to land after auth (default `/portal/jobs`). For X this is the
+ * - `next`: where to land after auth (default `/portal/scans`). For X this is the
  *   `?next=` on the auth callback; for dev login it's a client redirect unless
  *   `onDevSignedIn` is provided.
  * - `onBeforeOAuth`: run right before the X redirect (e.g. stash pending state).
  * - `onDevSignedIn`: run after a successful dev sign-in instead of redirecting.
  */
 export function AuthPanel({
-  next = "/portal/jobs",
+  next = "/portal/scans",
   onBeforeOAuth,
   onDevSignedIn,
   className = "",

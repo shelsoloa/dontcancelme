@@ -27,7 +27,7 @@ export default function StartPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // On load: resolve session, prefill from profile, and finish a pending audit
+  // On load: resolve session, prefill from profile, and finish a pending scan
   // if we just came back from an auth redirect.
   useEffect(() => {
     const supabase = createClient();
@@ -50,7 +50,10 @@ export default function StartPage() {
             age: profile.age != null ? String(profile.age) : "",
             gender: profile.gender ?? "",
             race: profile.race
-              ? profile.race.split(",").map((s: string) => s.trim()).filter(Boolean)
+              ? profile.race
+                  .split(",")
+                  .map((s: string) => s.trim())
+                  .filter(Boolean)
               : [],
             orientation: profile.sexual_orientation ?? "",
             country: profile.country ?? "",
@@ -78,7 +81,7 @@ export default function StartPage() {
     const result = await startAudit(payload);
     if ("jobId" in result) {
       sessionStorage.removeItem(PENDING_KEY);
-      router.push(`/portal/jobs/${result.jobId}/quote`);
+      router.push(`/portal/scans/${result.jobId}/quote`);
     } else {
       finalizingRef.current = false;
       setSubmitting(false);
@@ -107,7 +110,7 @@ export default function StartPage() {
 
   return (
     <main className="mx-auto w-full max-w-xl flex-1 px-6 py-12">
-      <h1 className="text-2xl font-semibold tracking-tight">Start an audit</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Start a scan</h1>
       <p className="mt-2 text-sm text-ink-2">
         Tell us a bit about you so we can judge what counts as risky, then pick
         what to scan for.
@@ -122,7 +125,7 @@ export default function StartPage() {
 
       {showAuth && !userId && pendingPayload && (
         <div className="mt-8">
-          <h2 className="text-sm font-medium">Sign in to start your audit</h2>
+          <h2 className="text-sm font-medium">Sign in to start your scan</h2>
           <p className="mt-1 text-xs text-ink-2">
             We need access to your X account to scan it.
           </p>
@@ -130,7 +133,10 @@ export default function StartPage() {
             className="mt-4"
             next="/start"
             onBeforeOAuth={() =>
-              sessionStorage.setItem(PENDING_KEY, JSON.stringify(pendingPayload))
+              sessionStorage.setItem(
+                PENDING_KEY,
+                JSON.stringify(pendingPayload),
+              )
             }
             onDevSignedIn={() => finalize(pendingPayload)}
           />

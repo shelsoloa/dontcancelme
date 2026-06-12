@@ -27,7 +27,7 @@ export async function TopBar() {
             className="inline-flex h-9 items-center justify-center rounded-full border border-line-strong px-4 font-medium transition-colors hover:bg-surface-2"
           >
             {user ? (
-              <Link href="/portal/jobs">Portal</Link>
+              <Link href="/portal/scans">Portal</Link>
             ) : (
               <Link href="/login">Login</Link>
             )}

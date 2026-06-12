@@ -38,10 +38,10 @@ export async function POST(request: Request) {
 
   const origin = new URL(request.url).origin;
   const successUrl = jobId
-    ? `${origin}/portal/jobs/${jobId}?topped_up=1`
+    ? `${origin}/portal/scans/${jobId}?topped_up=1`
     : `${origin}/portal/account?topped_up=1`;
   const cancelUrl = jobId
-    ? `${origin}/portal/jobs/${jobId}`
+    ? `${origin}/portal/scans/${jobId}`
     : `${origin}/portal/account`;
 
   const stripe = getStripe();

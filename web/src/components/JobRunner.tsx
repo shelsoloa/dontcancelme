@@ -26,7 +26,7 @@ import {
 } from "@/lib/audit/severity";
 import { RiskCard } from "@/components/ui/RiskCard";
 import { StatStrip } from "@/components/ui/StatStrip";
-import { StatusBadge, formatDate, auditName } from "@/components/CardList";
+import { StatusBadge, formatDate, scanName } from "@/components/CardList";
 
 type JobMeta = {
   jobId: string;
@@ -47,14 +47,19 @@ type Phase =
   | { kind: "running"; snapshot: AuditSnapshot; label: string }
   | { kind: "done"; result: StoredAudit }
   | { kind: "missing_results" }
-  | { kind: "likes_exhausted"; processedCount: number; likesCap: number; reason?: "rate_limited" }
+  | {
+      kind: "likes_exhausted";
+      processedCount: number;
+      likesCap: number;
+      reason?: "rate_limited";
+    }
   | { kind: "stopped"; processedCount: number; fromLikes: boolean }
   | { kind: "error"; message: string };
 
 const SEVERITY_STYLES: Record<Severity, string> = {
-  low:      "bg-low-soft text-low",
-  medium:   "bg-med-soft text-med",
-  high:     "bg-high-soft text-high",
+  low: "bg-low-soft text-low",
+  medium: "bg-med-soft text-med",
+  high: "bg-high-soft text-high",
   critical: "bg-crit-soft text-crit",
 };
 
@@ -174,7 +179,11 @@ export default function JobRunner({ jobId }: { jobId: string }) {
 
     setPhase({
       kind: "running",
-      snapshot: { progress: { total: 0, processed: 0, flagged: 0 }, stats: {}, posts: [] },
+      snapshot: {
+        progress: { total: 0, processed: 0, flagged: 0 },
+        stats: {},
+        posts: [],
+      },
       label: "Fetching tweets…",
     });
 
@@ -190,7 +199,7 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         if (chargeResult.shortfall > 0) {
           throw new Error(
             `Insufficient credits (shortfall: ${chargeResult.shortfall}). ` +
-            "Please top up your balance from the account page.",
+              "Please top up your balance from the account page.",
           );
         }
       }
@@ -204,7 +213,11 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         signal,
         onProgress: (snapshot) => {
           lastSnapshotRef.current = snapshot;
-          setPhase({ kind: "running", snapshot, label: "Scanning your posts…" });
+          setPhase({
+            kind: "running",
+            snapshot,
+            label: "Scanning your posts…",
+          });
         },
       });
 
@@ -221,10 +234,10 @@ export default function JobRunner({ jobId }: { jobId: string }) {
           userId,
           enabledCategories: jobMeta.enabledCategories,
           likesCap: jobMeta.likesCap,
-          initialCursor:    jobMeta.likesCursor ?? undefined,
+          initialCursor: jobMeta.likesCursor ?? undefined,
           initialProcessed: jobMeta.likesProcessed,
-          priorPosts:  deterministic.posts,
-          priorStats:  deterministic.stats,
+          priorPosts: deterministic.posts,
+          priorStats: deterministic.stats,
           signal,
           onProgress: (snapshot, processedCount) => {
             lastSnapshotRef.current = snapshot;
@@ -239,9 +252,9 @@ export default function JobRunner({ jobId }: { jobId: string }) {
             await supabase
               .from("audit_jobs")
               .update({
-                status:          "likes_exhausted",
+                status: "likes_exhausted",
                 likes_processed: processedCount,
-                likes_cursor:    nextCursor ?? null,
+                likes_cursor: nextCursor ?? null,
               })
               .eq("job_id", jobMeta.jobId);
           },
@@ -253,9 +266,9 @@ export default function JobRunner({ jobId }: { jobId: string }) {
           const stored: StoredAudit = {
             jobId: jobMeta.jobId,
             status: "completed",
-            posts:    drainResult.snapshot.posts,
+            posts: drainResult.snapshot.posts,
             progress: drainResult.snapshot.progress,
-            stats:    drainResult.snapshot.stats,
+            stats: drainResult.snapshot.stats,
             finishedAt,
           };
           saveAudit(stored);
@@ -264,8 +277,8 @@ export default function JobRunner({ jobId }: { jobId: string }) {
           setPhase({
             kind: "likes_exhausted",
             processedCount: drainResult.processedCount,
-            likesCap:       jobMeta.likesCap,
-            reason:         drainResult.reason,
+            likesCap: jobMeta.likesCap,
+            reason: drainResult.reason,
           });
           return;
         }
@@ -276,9 +289,9 @@ export default function JobRunner({ jobId }: { jobId: string }) {
           const stored: StoredAudit = {
             jobId: jobMeta.jobId,
             status: "completed",
-            posts:    drainResult.snapshot.posts,
+            posts: drainResult.snapshot.posts,
             progress: drainResult.snapshot.progress,
-            stats:    drainResult.snapshot.stats,
+            stats: drainResult.snapshot.stats,
             finishedAt,
           };
           saveAudit(stored);
@@ -297,33 +310,35 @@ export default function JobRunner({ jobId }: { jobId: string }) {
           .from("audit_jobs")
           .update({
             likes_processed: drainResult.processedCount,
-            likes_cursor:    null,
+            likes_cursor: null,
           })
           .eq("job_id", jobMeta.jobId);
 
         // Use the final merged snapshot (deterministic + all likes).
         const finalSnapshot = drainResult.snapshot;
-        const finishedAt   = new Date().toISOString();
+        const finishedAt = new Date().toISOString();
         const stored: StoredAudit = {
           jobId: jobMeta.jobId,
           status: "completed",
-          posts:    finalSnapshot.posts,
+          posts: finalSnapshot.posts,
           progress: finalSnapshot.progress,
-          stats:    finalSnapshot.stats,
+          stats: finalSnapshot.stats,
           finishedAt,
         };
         saveAudit(stored);
         await supabase
           .from("audit_jobs")
           .update({
-            status:      "completed",
-            progress:    finalSnapshot.progress,
-            stats:       finalSnapshot.stats,
+            status: "completed",
+            progress: finalSnapshot.progress,
+            stats: finalSnapshot.stats,
             finished_at: finishedAt,
           })
           .eq("job_id", jobMeta.jobId);
         // Refresh meta so ResultsView shows the real "N of cap" count.
-        setMeta((m) => (m ? { ...m, likesProcessed: drainResult.processedCount } : m));
+        setMeta((m) =>
+          m ? { ...m, likesProcessed: drainResult.processedCount } : m,
+        );
         setPhase({ kind: "done", result: stored });
         return;
       }
@@ -333,18 +348,18 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       const stored: StoredAudit = {
         jobId: jobMeta.jobId,
         status: "completed",
-        posts:    deterministic.posts,
+        posts: deterministic.posts,
         progress: deterministic.progress,
-        stats:    deterministic.stats,
+        stats: deterministic.stats,
         finishedAt,
       };
       saveAudit(stored);
       await supabase
         .from("audit_jobs")
         .update({
-          status:      "completed",
-          progress:    deterministic.progress,
-          stats:       deterministic.stats,
+          status: "completed",
+          progress: deterministic.progress,
+          stats: deterministic.stats,
           finished_at: finishedAt,
         })
         .eq("job_id", jobMeta.jobId);
@@ -356,17 +371,18 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         // the explicit `.current = null` assignment at the top of `start()` because
         // it can't track writes that happen inside onProgress callbacks.
         const stopSnapshot = lastSnapshotRef.current as AuditSnapshot | null;
-        const processedCount = stopSnapshot != null ? stopSnapshot.progress.processed : 0;
+        const processedCount =
+          stopSnapshot != null ? stopSnapshot.progress.processed : 0;
 
         if (stopSnapshot != null && processedCount > 0) {
           // Save whatever was scanned so far.
           const finishedAt = new Date().toISOString();
           const stored: StoredAudit = {
-            jobId:    jobMeta.jobId,
-            status:   "completed",
-            posts:    stopSnapshot.posts,
+            jobId: jobMeta.jobId,
+            status: "completed",
+            posts: stopSnapshot.posts,
             progress: stopSnapshot.progress,
-            stats:    stopSnapshot.stats,
+            stats: stopSnapshot.stats,
             finishedAt,
           };
           saveAudit(stored);
@@ -426,9 +442,9 @@ export default function JobRunner({ jobId }: { jobId: string }) {
 
       const updatedMeta: JobMeta = {
         ...meta,
-        status:         "queued",
+        status: "queued",
         likesProcessed: freshJob.likes_processed ?? meta.likesProcessed,
-        likesCursor:    freshJob.likes_cursor ?? meta.likesCursor,
+        likesCursor: freshJob.likes_cursor ?? meta.likesCursor,
       };
       setMeta(updatedMeta);
       await supabase
@@ -442,11 +458,11 @@ export default function JobRunner({ jobId }: { jobId: string }) {
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
-      <Link href="/portal/jobs" className="text-sm text-ink-2 hover:underline">
-        ← Back to audits
+      <Link href="/portal/scans" className="text-sm text-ink-2 hover:underline">
+        ← Back to scans
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">
-        {auditName(meta?.createdAt)}
+        {scanName(meta?.createdAt)}
       </h1>
       <p className="mt-1 text-sm text-ink-3">#{jobId}</p>
 
@@ -455,7 +471,9 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       )}
 
       {phase.kind === "not_found" && (
-        <p className="mt-6 text-sm text-ink-2">We couldn&apos;t find that audit.</p>
+        <p className="mt-6 text-sm text-ink-2">
+          We couldn&apos;t find that scan.
+        </p>
       )}
 
       {phase.kind === "running" && (
@@ -535,9 +553,9 @@ function LikesExhaustedView({
       // Use the job-specific checkout route (reads persisted quote for the amount).
       // If the quote is stale, fall back to the portal account top-up.
       const res = await fetch("/api/stripe/checkout", {
-        method:  "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ jobId }),
+        body: JSON.stringify({ jobId }),
       });
       const d = await res.json().catch(() => ({}));
       if (res.ok && d.url) {
@@ -548,7 +566,9 @@ function LikesExhaustedView({
       setTopUpError(d.error ?? "Could not start checkout.");
       setToppingUp(false);
     } catch (e) {
-      setTopUpError(e instanceof Error ? e.message : "Could not start checkout.");
+      setTopUpError(
+        e instanceof Error ? e.message : "Could not start checkout.",
+      );
       setToppingUp(false);
     }
   }
@@ -558,8 +578,8 @@ function LikesExhaustedView({
       <div className="mt-6 rounded-xl border border-line p-6">
         <h2 className="text-lg font-semibold">X rate limit reached</h2>
         <p className="mt-2 text-sm text-ink-2">
-          X temporarily paused requests for liked tweets — this resets every
-          15 minutes. Your progress is saved; click below to try again.
+          X temporarily paused requests for liked tweets — this resets every 15
+          minutes. Your progress is saved; click below to try again.
         </p>
         <div className="mt-4">
           <button
@@ -723,15 +743,25 @@ function ResultsView({
   function toggleCategory(cat: RiskCategory) {
     setActiveCategories((prev) => {
       const next = new Set(prev);
-      if (next.has(cat)) { next.delete(cat); } else { next.add(cat); }
+      if (next.has(cat)) {
+        next.delete(cat);
+      } else {
+        next.add(cat);
+      }
       return next;
     });
   }
 
-  function showAll() { setActiveCategories(new Set(allCats)); }
+  function showAll() {
+    setActiveCategories(new Set(allCats));
+  }
 
   const severityBuckets: Record<DesignSeverity, number> = {
-    clear: 0, low: 0, med: 0, high: 0, crit: 0,
+    clear: 0,
+    low: 0,
+    med: 0,
+    high: 0,
+    crit: 0,
   };
   for (const p of allFlaggedPosts) {
     severityBuckets[postSeverity(p.flags)]++;
@@ -742,19 +772,27 @@ function ResultsView({
     [
       { severity: "crit" as DesignSeverity, label: "Critical" },
       { severity: "high" as DesignSeverity, label: "High" },
-      { severity: "med"  as DesignSeverity, label: "Medium"   },
-      { severity: "low"  as DesignSeverity, label: "Low"      },
+      { severity: "med" as DesignSeverity, label: "Medium" },
+      { severity: "low" as DesignSeverity, label: "Low" },
       { severity: "clear" as DesignSeverity, label: "Clear ✓" },
     ] as const
   )
     .filter((s) => severityBuckets[s.severity] > 0)
-    .map((s) => ({ severity: s.severity, label: s.label, count: severityBuckets[s.severity] }));
+    .map((s) => ({
+      severity: s.severity,
+      label: s.label,
+      count: severityBuckets[s.severity],
+    }));
 
   return (
     <div className="mt-6 space-y-8">
       <dl className="divide-y divide-line rounded-xl border border-line">
-        <Row label="Status"><StatusBadge status="completed" /></Row>
-        <Row label="Date started">{formatDate(meta.startedAt ?? meta.createdAt)}</Row>
+        <Row label="Status">
+          <StatusBadge status="completed" />
+        </Row>
+        <Row label="Date started">
+          {formatDate(meta.startedAt ?? meta.createdAt)}
+        </Row>
         <Row label="Scanned">{result.progress.total} tweets</Row>
         <Row label="Flagged">{result.progress.flagged} tweets</Row>
         {meta.scanLimit != null && (
@@ -762,7 +800,8 @@ function ResultsView({
         )}
         {meta.likesCap != null && (
           <Row label="Likes processed">
-            {meta.likesProcessed.toLocaleString()} of {meta.likesCap.toLocaleString()}
+            {meta.likesProcessed.toLocaleString()} of{" "}
+            {meta.likesCap.toLocaleString()}
           </Row>
         )}
         <Row label="Categories">
@@ -900,10 +939,10 @@ function FlaggedList({
   return (
     <ul className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${className}`}>
       {posts.map((p) => {
-        const sev      = postSeverity(p.flags);
+        const sev = postSeverity(p.flags);
         const redacted = shouldRedact(p.flags);
-        const reasons  = dedupeCategories(p.flags).map((f) => ({
-          label:    RISK_LABELS[f.category],
+        const reasons = dedupeCategories(p.flags).map((f) => ({
+          label: RISK_LABELS[f.category],
           severity: SEVERITY_TOKEN[f.severity],
         }));
         return (

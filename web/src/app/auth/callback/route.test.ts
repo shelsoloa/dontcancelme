@@ -1,7 +1,7 @@
 /**
  * Tests for the OAuth callback route.
  *
- * Verifies that a successful X code-exchange redirects to /portal/jobs,
+ * Verifies that a successful X code-exchange redirects to /portal/scans,
  * that failures redirect to /start?error=auth, and that captureXConnection
  * is called when a provider_token is present.
  */
@@ -36,9 +36,10 @@ function makeRequest(
   });
 }
 
-function mockSupabase(
-  exchangeResult: { data: object; error: null | { message: string } },
-) {
+function mockSupabase(exchangeResult: {
+  data: object;
+  error: null | { message: string };
+}) {
   vi.mocked(createClient).mockResolvedValue({
     auth: {
       exchangeCodeForSession: vi.fn().mockResolvedValue(exchangeResult),
@@ -55,7 +56,7 @@ beforeEach(() => {
 
 describe("GET /auth/callback", () => {
   describe("X / PKCE code-exchange path", () => {
-    it("redirects to /portal/jobs on successful code exchange", async () => {
+    it("redirects to /portal/scans on successful code exchange", async () => {
       mockSupabase({
         data: { session: { provider_token: null } },
         error: null,
@@ -65,14 +66,22 @@ describe("GET /auth/callback", () => {
 
       expect(res.status).toBeGreaterThanOrEqual(300);
       expect(res.status).toBeLessThan(400);
-      expect(res.headers.get("location")).toBe("http://127.0.0.1:3000/portal/jobs");
+      expect(res.headers.get("location")).toBe(
+        "http://127.0.0.1:3000/portal/scans",
+      );
     });
 
     it("respects the `next` query param when redirecting", async () => {
-      mockSupabase({ data: { session: { provider_token: null } }, error: null });
+      mockSupabase({
+        data: { session: { provider_token: null } },
+        error: null,
+      });
 
       const res = await GET(
-        makeRequest("/auth/callback", { code: "abc", next: "/portal/settings" }),
+        makeRequest("/auth/callback", {
+          code: "abc",
+          next: "/portal/settings",
+        }),
       );
 
       expect(res.headers.get("location")).toBe(
@@ -82,7 +91,7 @@ describe("GET /auth/callback", () => {
 
     it("calls captureXConnection when provider_token is present", async () => {
       const session = {
-        provider_token:         "xprovider_tok",
+        provider_token: "xprovider_tok",
         provider_refresh_token: "xrefresh_tok",
         user: { id: "u1" },
       };
@@ -94,7 +103,10 @@ describe("GET /auth/callback", () => {
     });
 
     it("does NOT call captureXConnection when provider_token is null", async () => {
-      mockSupabase({ data: { session: { provider_token: null } }, error: null });
+      mockSupabase({
+        data: { session: { provider_token: null } },
+        error: null,
+      });
 
       await GET(makeRequest("/auth/callback", { code: "abc123" }));
 
@@ -130,14 +142,17 @@ describe("GET /auth/callback", () => {
 
   describe("origin derivation", () => {
     it("uses x-forwarded-host when present", async () => {
-      mockSupabase({ data: { session: { provider_token: null } }, error: null });
+      mockSupabase({
+        data: { session: { provider_token: null } },
+        error: null,
+      });
 
       const res = await GET(
         makeRequest(
           "/auth/callback",
           { code: "abc" },
           {
-            host:               "internal-host",
+            host: "internal-host",
             "x-forwarded-host": "prod.example.com",
             "x-forwarded-proto": "https",
           },
@@ -145,7 +160,7 @@ describe("GET /auth/callback", () => {
       );
 
       expect(res.headers.get("location")).toBe(
-        "https://prod.example.com/portal/jobs",
+        "https://prod.example.com/portal/scans",
       );
     });
   });
