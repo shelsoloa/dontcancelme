@@ -47,7 +47,7 @@ type Phase =
   | { kind: "running"; snapshot: AuditSnapshot; label: string }
   | { kind: "done"; result: StoredAudit }
   | { kind: "missing_results" }
-  | { kind: "likes_exhausted"; processedCount: number; likesCap: number }
+  | { kind: "likes_exhausted"; processedCount: number; likesCap: number; reason?: "rate_limited" }
   | { kind: "stopped"; processedCount: number; fromLikes: boolean }
   | { kind: "error"; message: string };
 
@@ -265,6 +265,7 @@ export default function JobRunner({ jobId }: { jobId: string }) {
             kind: "likes_exhausted",
             processedCount: drainResult.processedCount,
             likesCap:       jobMeta.likesCap,
+            reason:         drainResult.reason,
           });
           return;
         }
@@ -321,6 +322,8 @@ export default function JobRunner({ jobId }: { jobId: string }) {
             finished_at: finishedAt,
           })
           .eq("job_id", jobMeta.jobId);
+        // Refresh meta so ResultsView shows the real "N of cap" count.
+        setMeta((m) => (m ? { ...m, likesProcessed: drainResult.processedCount } : m));
         setPhase({ kind: "done", result: stored });
         return;
       }
@@ -488,6 +491,7 @@ export default function JobRunner({ jobId }: { jobId: string }) {
           likesCap={phase.likesCap}
           jobId={jobId}
           onResume={resumeLikes}
+          reason={phase.reason}
         />
       )}
 
@@ -513,11 +517,13 @@ function LikesExhaustedView({
   likesCap,
   jobId,
   onResume,
+  reason,
 }: {
   processedCount: number;
   likesCap: number;
   jobId: string;
   onResume: () => void;
+  reason?: "rate_limited";
 }) {
   const [toppingUp, setToppingUp] = useState(false);
   const [topUpError, setTopUpError] = useState<string | null>(null);
@@ -545,6 +551,29 @@ function LikesExhaustedView({
       setTopUpError(e instanceof Error ? e.message : "Could not start checkout.");
       setToppingUp(false);
     }
+  }
+
+  if (reason === "rate_limited") {
+    return (
+      <div className="mt-6 rounded-xl border border-line p-6">
+        <h2 className="text-lg font-semibold">X rate limit reached</h2>
+        <p className="mt-2 text-sm text-ink-2">
+          X temporarily paused requests for liked tweets — this resets every
+          15 minutes. Your progress is saved; click below to try again.
+        </p>
+        <div className="mt-4">
+          <button
+            onClick={onResume}
+            className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90"
+          >
+            Try again
+          </button>
+        </div>
+        <p className="mt-3 text-xs text-ink-2">
+          Results scanned so far are saved. No tweets will be re-scanned.
+        </p>
+      </div>
+    );
   }
 
   return (

@@ -15,6 +15,14 @@
 
 import { detect } from "./detectors";
 import { fetchTweets, fetchLikesPage, chargeLike } from "./source";
+
+/**
+ * Maximum number of consecutive empty liked-tweets pages we'll follow before
+ * giving up.  X can return empty pages that still carry a next_token due to
+ * backend buffering; we advance through them rather than stopping.  This cap
+ * prevents an infinite loop if the feed is genuinely empty or the cursor loops.
+ */
+const MAX_EMPTY_STREAK = 8;
 import type {
   AuditedPost,
   AuditJobProgress,
@@ -83,54 +91,47 @@ function projectModLabel(
 }
 
 /**
- * Batch tweets to the server-side gate route and return a map of tweet id →
- * projected Flag[]. Skips the call entirely when none of the four moderation
- * categories is enabled.
+ * Batch a single chunk (≤25 items) to the server-side gate route and return
+ * a map of tweet id → projected Flag[]. Fail-open on any error.
+ * Call this lazily — once per 25-item frontier — so onProgress fires per item
+ * instead of being blocked behind a single up-front batch.
  */
-async function fetchModerationFlags(
+const MOD_CHUNK_SIZE = 25;
+
+async function moderateChunk(
   jobId: string,
-  tweets: Array<{ id: string; text: string }>,
-  enabledCategories: RiskCategory[],
+  chunk: Array<{ id: string; text: string }>,
+  enabledSet: Set<RiskCategory>,
 ): Promise<Map<string, Flag[]>> {
-  const enabledSet = new Set(enabledCategories);
-  const anyModEnabled = [...MODERATION_CATEGORIES].some((c) =>
-    enabledSet.has(c),
-  );
-  if (!anyModEnabled || tweets.length === 0) return new Map();
-
   const map = new Map<string, Flag[]>();
+  if (chunk.length === 0) return map;
 
-  // Batch in chunks of ≤50.
-  for (let i = 0; i < tweets.length; i += 50) {
-    const chunk = tweets.slice(i, i + 50);
-    let results: ModerationResult[];
-    try {
-      const res = await fetch("/api/moderation/check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobId,
-          items: chunk.map((t) => ({ id: t.id, text: t.text })),
-        }),
-      });
-      if (!res.ok) continue; // fail-open: skip moderation flags for this chunk
-      const data = (await res.json()) as { results: ModerationResult[] };
-      results = data.results;
-    } catch {
-      continue; // network error — fail-open
-    }
+  let results: ModerationResult[];
+  try {
+    const res = await fetch("/api/moderation/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jobId,
+        items: chunk.map((t) => ({ id: t.id, text: t.text })),
+      }),
+    });
+    if (!res.ok) return map; // fail-open
+    const data = (await res.json()) as { results: ModerationResult[] };
+    results = data.results;
+  } catch {
+    return map; // network error — fail-open
+  }
 
-    for (const result of results) {
-      const flags: Flag[] = [];
-      for (const label of result.labels) {
-        const flag = projectModLabel(result, label);
-        if (!flag) continue;
-        // Only surface flags for enabled categories.
-        if (!enabledSet.has(flag.category)) continue;
-        flags.push(flag);
-      }
-      if (flags.length > 0) map.set(result.id, flags);
+  for (const result of results) {
+    const flags: Flag[] = [];
+    for (const label of result.labels) {
+      const flag = projectModLabel(result, label);
+      if (!flag) continue;
+      if (!enabledSet.has(flag.category)) continue;
+      flags.push(flag);
     }
+    if (flags.length > 0) map.set(result.id, flags);
   }
 
   return map;
@@ -205,7 +206,12 @@ export async function runAudit(args: RunAuditArgs): Promise<AuditSnapshot> {
   const tweets = await fetchTweets({ jobId, live: args.live });
   if (signal?.aborted) throw new AbortError();
 
-  const modFlags = await fetchModerationFlags(jobId, tweets, enabledCategories);
+  // Moderation is done lazily in MOD_CHUNK_SIZE-item batches so that
+  // onProgress fires per-tweet rather than after one large up-front call.
+  const enabledSet = new Set(enabledCategories);
+  const anyModEnabled = [...MODERATION_CATEGORIES].some((c) => enabledSet.has(c));
+  const modFlags = new Map<string, Flag[]>();
+  let modNext = 0;
 
   const posts: AuditedPost[] = [];
   const stats: Partial<Record<RiskCategory, number>> = {};
@@ -219,8 +225,17 @@ export async function runAudit(args: RunAuditArgs): Promise<AuditSnapshot> {
 
   onProgress?.(snapshot());
 
-  for (const tweet of tweets) {
+  for (let i = 0; i < tweets.length; i++) {
+    const tweet = tweets[i];
     if (signal?.aborted) throw new AbortError();
+
+    // Fire the next moderation chunk lazily when we reach an unmoderated item.
+    if (anyModEnabled && i >= modNext) {
+      const chunk = tweets.slice(modNext, modNext + MOD_CHUNK_SIZE);
+      const chunkMap = await moderateChunk(jobId, chunk, enabledSet);
+      for (const [id, fl] of chunkMap) modFlags.set(id, fl);
+      modNext += chunk.length;
+    }
 
     const { flags: regexFlags, redactedText } = detect(tweet.text, enabledCategories);
     const flags = [...regexFlags, ...(modFlags.get(tweet.id) ?? [])];
@@ -281,7 +296,7 @@ export type LikesDrainArgs = {
 
 export type LikesDrainResult =
   | { kind: "completed"; snapshot: AuditSnapshot; processedCount: number }
-  | { kind: "exhausted"; snapshot: AuditSnapshot; processedCount: number; nextCursor: string | undefined }
+  | { kind: "exhausted"; snapshot: AuditSnapshot; processedCount: number; nextCursor: string | undefined; reason?: "rate_limited" }
   | { kind: "stopped";   snapshot: AuditSnapshot; processedCount: number; nextCursor: string | undefined };
 
 /** Run the metered likes drain loop for a job (Phase B). */
@@ -293,11 +308,18 @@ export async function runLikesDrain(args: LikesDrainArgs): Promise<LikesDrainRes
   } = args;
   const stepDelayMs = args.stepDelayMs ?? 0;
 
+  // Moderation is done lazily in MOD_CHUNK_SIZE-item batches per page so that
+  // onProgress fires per-tweet rather than after one large up-front call.
+  const enabledSet = new Set(enabledCategories);
+  const anyModEnabled = [...MODERATION_CATEGORIES].some((c) => enabledSet.has(c));
+
   const posts: AuditedPost[]  = [...priorPosts];
   const stats: Partial<Record<RiskCategory, number>> = { ...priorStats };
   let flagged = priorPosts.filter((p) => p.flags.length > 0).length;
   let processedCount = initialProcessed;
   let cursor = initialCursor;
+  /** Consecutive empty pages followed without processing any tweets. */
+  let emptyStreak = 0;
 
   function snapshot(): AuditSnapshot {
     return {
@@ -324,26 +346,41 @@ export async function runLikesDrain(args: LikesDrainArgs): Promise<LikesDrainRes
     let page;
     try {
       page = await fetchLikesPage(jobId, cursor);
-    } catch {
-      // Network/API error — surface as exhaustion so the runner can save state.
+    } catch (e) {
+      // Distinguish X rate-limit (ask user to wait) from other errors.
+      const isRateLimit = e instanceof Error && e.name === "RateLimitedError";
       onExhausted?.(processedCount, cursor);
-      return { kind: "exhausted", snapshot: snapshot(), processedCount, nextCursor: cursor };
+      return {
+        kind: "exhausted",
+        snapshot: snapshot(),
+        processedCount,
+        nextCursor: cursor,
+        ...(isRateLimit ? { reason: "rate_limited" as const } : {}),
+      };
     }
 
     if (page.tweets.length === 0) {
-      // No more liked tweets — drain complete.
+      // X can return empty pages that still carry a next_token (backend
+      // buffering).  Follow the cursor rather than stopping immediately.
+      if (page.nextCursor) {
+        cursor = page.nextCursor;
+        emptyStreak++;
+        if (emptyStreak > MAX_EMPTY_STREAK) break; // safety — stop spinning
+        continue;
+      }
+      // No cursor → genuine end-of-list.
       break;
     }
 
-    // Moderate the page in one batch before charging individual tweets.
-    // Fail-open: moderation errors produce an empty map, not a stop.
-    const pageModFlags = await fetchModerationFlags(
-      jobId,
-      page.tweets,
-      enabledCategories,
-    );
+    emptyStreak = 0; // reset on any non-empty page
 
-    for (const tweet of page.tweets) {
+    // Per-page moderation cache — populated lazily in MOD_CHUNK_SIZE batches
+    // so onProgress still fires per tweet (not after a single up-front call).
+    const pageMod = new Map<string, Flag[]>();
+    let pageModNext = 0;
+
+    for (let j = 0; j < page.tweets.length; j++) {
+      const tweet = page.tweets[j];
       if (processedCount >= likesCap) break;
 
       // Charge for this tweet; stop if balance is insufficient.
@@ -365,9 +402,18 @@ export async function runLikesDrain(args: LikesDrainArgs): Promise<LikesDrainRes
         return { kind: "exhausted", snapshot: snapshot(), processedCount, nextCursor };
       }
 
-      // Charged successfully — detect and accumulate.
+      // Fire the next moderation chunk lazily when we reach an unmoderated item.
+      // Moderation is unmetered — moderating a tweet we later can't charge is harmless.
+      if (anyModEnabled && j >= pageModNext) {
+        const chunk = page.tweets.slice(pageModNext, pageModNext + MOD_CHUNK_SIZE);
+        const chunkMap = await moderateChunk(jobId, chunk, enabledSet);
+        for (const [id, fl] of chunkMap) pageMod.set(id, fl);
+        pageModNext += chunk.length;
+      }
+
+      // Charged and moderated — detect and accumulate.
       const { flags: regexFlagsC, redactedText } = detect(tweet.text, enabledCategories);
-      const flags = [...regexFlagsC, ...(pageModFlags.get(tweet.id) ?? [])];
+      const flags = [...regexFlagsC, ...(pageMod.get(tweet.id) ?? [])];
       if (flags.length > 0) {
         flagged++;
         const seen = new Set<RiskCategory>();

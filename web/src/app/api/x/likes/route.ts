@@ -65,8 +65,19 @@ export async function GET(request: Request) {
 
   try {
     const page = await listLikedTweetsPage(token, me.id, cursor);
+    // Temporary diagnostics — remove once empty-page behaviour is confirmed.
+    console.warn(
+      "[likes] uid=%s cursor=%s tweets=%d hasNext=%s",
+      me.id,
+      cursor ?? "(none)",
+      page.tweets.length,
+      Boolean(page.nextCursor),
+    );
     return NextResponse.json(page);
-  } catch {
+  } catch (e) {
+    if (e instanceof XApiError && e.status === 429) {
+      return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+    }
     return NextResponse.json({ error: "x_api_error" }, { status: 502 });
   }
 }

@@ -3,6 +3,11 @@
  *
  * Verifies that the right X API functions are called depending on
  * enabled_sources: only-tweets, only-likes, and both.
+ *
+ * NOTE: likes are NO LONGER fetched by this route. Phase A only fetches own
+ * posts/reposts (timeline). Likes are metered and drained exclusively via
+ * /api/x/likes (Phase B engine loop). For a likes-only job this route returns
+ * an empty tweets array.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -76,17 +81,20 @@ describe("GET /api/x/tweets — source selection", () => {
     expect(listLikedTweets).not.toHaveBeenCalled();
   });
 
-  it("only likes: calls listLikedTweets and NOT listTimeline", async () => {
+  it("only likes: returns 200 with empty tweets (likes drained by Phase B, not here)", async () => {
     vi.mocked(createClient).mockResolvedValue(makeSupabaseClient(["likes"]) as never);
 
-    const res = await GET(makeRequest());
-    expect(res.status).toBe(200);
+    const res  = await GET(makeRequest());
+    const body = await res.json() as { tweets: unknown[] };
 
-    expect(listLikedTweets).toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    // Likes are never fetched by this route — Phase B drains them metered.
+    expect(listLikedTweets).not.toHaveBeenCalled();
     expect(listTimeline).not.toHaveBeenCalled();
+    expect(body.tweets).toHaveLength(0);
   });
 
-  it("tweets + likes: calls both listTimeline and listLikedTweets", async () => {
+  it("tweets + likes: calls listTimeline for own_text but NOT listLikedTweets", async () => {
     vi.mocked(createClient).mockResolvedValue(
       makeSupabaseClient(["own_text", "likes"]) as never,
     );
@@ -96,9 +104,10 @@ describe("GET /api/x/tweets — source selection", () => {
 
     expect(res.status).toBe(200);
     expect(listTimeline).toHaveBeenCalled();
-    expect(listLikedTweets).toHaveBeenCalled();
-    // Result should contain tweets from both sources (deduped)
-    expect(body.tweets).toHaveLength(2);
+    // Likes are excluded from Phase A.
+    expect(listLikedTweets).not.toHaveBeenCalled();
+    // Result contains only own_text tweets (1 from the mock).
+    expect(body.tweets).toHaveLength(1);
   });
 
   it("own_images: calls listTimeline (image filtering is done client-side)", async () => {

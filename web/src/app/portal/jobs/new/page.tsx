@@ -25,7 +25,10 @@ export default async function NewJobPage() {
         age: profile.age != null ? String(profile.age) : "",
         gender: profile.gender ?? "",
         race: profile.race
-          ? profile.race.split(",").map((s: string) => s.trim()).filter(Boolean)
+          ? profile.race
+              .split(",")
+              .map((s: string) => s.trim())
+              .filter(Boolean)
           : [],
         orientation: profile.sexual_orientation ?? "",
         country: profile.country ?? "",

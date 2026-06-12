@@ -4,7 +4,6 @@ import { getValidToken, resolveConnectionId } from "@/lib/x/oauth";
 import {
   getMe,
   listTimeline,
-  listLikedTweets,
   MAX_FETCHABLE,
   XApiError,
   type XMe,
@@ -21,7 +20,9 @@ export const runtime = "nodejs";
  * own_text   → timeline entries with no photo attachments (excludes video-only too)
  * own_images → timeline entries with at least one photo attachment
  * reposts    → retweeted content
- * likes      → liked posts (bulk, up to cap — incremental drain uses /api/x/likes)
+ *
+ * Likes are intentionally excluded here. They are metered and drained
+ * incrementally by the Phase B engine loop via /api/x/likes.
  *
  * Billing is now pre-charged at runner start via charge_deterministic; this
  * route does NOT enforce a billing gate. The gate responsibility moved to the
@@ -37,7 +38,6 @@ async function fetchSources(
   const includeOwnText    = sources.includes("own_text");
   const includeOwnImages  = sources.includes("own_images");
   const includeReposts    = sources.includes("reposts");
-  const includeLikes      = sources.includes("likes");
 
   const all: RawTweet[] = [];
 
@@ -69,11 +69,6 @@ async function fetchSources(
         if (includeOwnText && !isVideoOnly) all.push(tweet);
       }
     }
-  }
-
-  // Likes use a separate endpoint.
-  if (includeLikes) {
-    all.push(...(await listLikedTweets(token, me.id, cap)));
   }
 
   const seen = new Set<string>();

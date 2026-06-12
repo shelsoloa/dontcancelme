@@ -256,6 +256,65 @@ describe("runLikesDrain", () => {
     expect(result.nextCursor).toBe("next-page");
   });
 
+  // ── Empty-page cursor-following (M1.2 fix) ──────────────────────────────────
+
+  it("follows nextCursor through an empty first page to reach tweets on subsequent pages", async () => {
+    // X returns an empty page on the first call but with a cursor — the drain
+    // must follow it rather than treating it as end-of-list.
+    fetchLikesPage
+      .mockResolvedValueOnce({ tweets: [], nextCursor: "cursor2" })           // empty first page
+      .mockResolvedValueOnce({ tweets: [makeLikeTweet("1"), makeLikeTweet("2")], nextCursor: undefined });
+    chargeLike.mockResolvedValue({ shortfall: 0 });
+
+    const result = await runLikesDrain(BASE_DRAIN_ARGS);
+
+    expect(result.kind).toBe("completed");
+    expect(result.processedCount).toBe(2);
+    expect(fetchLikesPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops after MAX_EMPTY_STREAK consecutive empty pages to prevent infinite loops", async () => {
+    // Simulates a persistently-empty feed with a cursor that never resolves to
+    // real tweets. The drain must stop within a bounded number of fetches.
+    fetchLikesPage.mockResolvedValue({ tweets: [], nextCursor: "always-has-cursor" });
+    chargeLike.mockResolvedValue({ shortfall: 0 });
+
+    const result = await runLikesDrain(BASE_DRAIN_ARGS);
+
+    expect(result.kind).toBe("completed");
+    expect(result.processedCount).toBe(0);
+    // Should stop well within MAX_EMPTY_STREAK + 1 calls (currently 9 max)
+    expect(fetchLikesPage.mock.calls.length).toBeLessThanOrEqual(10);
+    expect(fetchLikesPage.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("completes immediately when an empty page has no nextCursor (genuine end of list)", async () => {
+    fetchLikesPage.mockResolvedValueOnce({ tweets: [], nextCursor: undefined });
+    chargeLike.mockResolvedValue({ shortfall: 0 });
+
+    const result = await runLikesDrain(BASE_DRAIN_ARGS);
+
+    expect(result.kind).toBe("completed");
+    expect(result.processedCount).toBe(0);
+    expect(fetchLikesPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns exhausted with reason rate_limited when fetchLikesPage throws RateLimitedError", async () => {
+    const rateLimitErr = Object.assign(new Error("X API rate limit exceeded"), {
+      name: "RateLimitedError",
+    });
+    fetchLikesPage.mockRejectedValueOnce(rateLimitErr);
+
+    const onExhausted = vi.fn();
+    const result = await runLikesDrain({ ...BASE_DRAIN_ARGS, onExhausted });
+
+    expect(result.kind).toBe("exhausted");
+    if (result.kind !== "exhausted") throw new Error("unreachable");
+    expect(result.reason).toBe("rate_limited");
+    expect(result.processedCount).toBe(0);
+    expect(onExhausted).toHaveBeenCalledWith(0, undefined);
+  });
+
   it("returns { kind: stopped } between pages when aborted after a full page", async () => {
     const controller = new AbortController();
 

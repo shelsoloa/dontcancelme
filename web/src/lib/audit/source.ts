@@ -79,6 +79,19 @@ export type LikesPage = {
   nextCursor: string | undefined;
 };
 
+/**
+ * Thrown when the X API returns 429 (rate limited) for the liked_tweets
+ * endpoint.  The drain engine surfaces this as a distinct exhausted reason so
+ * the UI can prompt "try again in ~15 minutes" instead of the credit top-up
+ * flow.
+ */
+export class RateLimitedError extends Error {
+  constructor() {
+    super("X API rate limit exceeded");
+    this.name = "RateLimitedError";
+  }
+}
+
 /** Fetch one page of liked tweets. Pass cursor from the previous page's nextCursor. */
 export async function fetchLikesPage(
   jobId: string,
@@ -90,6 +103,7 @@ export async function fetchLikesPage(
     cache: "no-store",
   });
   if (!res.ok) {
+    if (res.status === 429) throw new RateLimitedError();
     const d = await res.json().catch(() => ({}));
     throw new Error(d.error ?? `Likes fetch failed (${res.status})`);
   }
