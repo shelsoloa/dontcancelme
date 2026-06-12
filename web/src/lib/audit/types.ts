@@ -97,7 +97,43 @@ export const RISK_LABELS: Record<RiskCategory, string> = {
 export type Severity = "low" | "medium" | "high" | "critical";
 
 /** Which detector produced a flag (provenance / trust / tuning). */
-export type Detector = "regex" | "llm";
+export type Detector = "regex" | "llm" | "gate";
+
+// ─── Moderation pipeline types ───────────────────────────────────────────────
+
+/** Fine-grained label produced by the moderation pipeline. */
+export type ModerationLabel =
+  | "curse"
+  | "strong_curse"
+  | "nsfw_sexual"
+  | "violent"
+  | "hate";
+
+/** A single match from the Phase-1 regex gate. */
+export type GateHit = {
+  term: string;
+  start: number;
+  end: number;
+  severity: number | null;
+  severityDesc: string | null;
+  categories: string[];
+};
+
+/** Per-item result from the moderation pipeline. */
+export type ModerationResult = {
+  /** Caller-supplied item id (tweet id, etc.). */
+  id: string;
+  decision: "clean" | "flagged";
+  labels: ModerationLabel[];
+  severity: "mild" | "strong" | "severe" | null;
+  degraded: boolean;
+  phase1: { ms: number; hits: GateHit[] };
+  phase2: {
+    status: string;
+    categories: string[];
+    scores: Record<string, number>;
+  } | null;
+};
 
 /** Where in the post the flag was found. Never contains a raw secret. */
 export type FlagEvidence = {

@@ -124,39 +124,8 @@ const MATCHERS: Matcher[] = [
     pattern:
       /\b(?:lives at|his address is|her address is|their address is|you can find (?:him|her|them) at|home address|real name is)\b/gi,
   },
-  // --- nsfw (text only in v1) --------------------------------------------
-  {
-    category: RiskCategory.Nsfw,
-    severity: "medium",
-    confidence: 0.5,
-    reason: "Sexual content",
-    pattern: /\b(?:nude|nudes|naked|porn|horny|nsfw|sext|dick\s?pic)\w*/gi,
-  },
-  // --- violence ----------------------------------------------------------
-  {
-    category: RiskCategory.Violence,
-    severity: "high",
-    confidence: 0.7,
-    reason: "Violent threat",
-    pattern:
-      /\b(?:i(?:'|’)?ll kill you|kill you|going to kill|gonna kill|shoot you|i(?:'|’)?ll hurt you|beat you up|murder you|i(?:'|’)?ll find you)\b/gi,
-  },
-  // --- hate speech / harassment (minimal placeholder lexicon) ------------
-  {
-    category: RiskCategory.HateSpeech,
-    severity: "high",
-    confidence: 0.5,
-    reason: "Possible hate speech or harassment",
-    pattern: /\b(?:kys|go kill yourself|subhuman|retard(?:ed)?|you people)\w*/gi,
-  },
-  // --- profanity ---------------------------------------------------------
-  {
-    category: RiskCategory.Profanity,
-    severity: "low",
-    confidence: 0.6,
-    reason: "Profanity",
-    pattern: /\b(?:fuck|shit|bitch|asshole|bastard|dick|piss)\w*/gi,
-  },
+  // nsfw, violence, hate_speech, profanity → handled server-side by the
+  // Phase-1 gate (POST /api/moderation/check) and merged into flags in engine.ts.
   // --- substances --------------------------------------------------------
   {
     category: RiskCategory.Substances,

@@ -18,8 +18,123 @@ import { fetchTweets, fetchLikesPage, chargeLike } from "./source";
 import type {
   AuditedPost,
   AuditJobProgress,
+  Flag,
+  ModerationResult,
   RiskCategory,
+  Severity,
 } from "./types";
+
+// ─── Moderation categories (handled server-side by the Phase-1 gate) ─────────
+
+const MODERATION_CATEGORIES = new Set<RiskCategory>([
+  "nsfw" as RiskCategory,
+  "violence" as RiskCategory,
+  "hate_speech" as RiskCategory,
+  "profanity" as RiskCategory,
+]);
+
+/** Projects a ModerationResult label+severity into a Flag for the UI. */
+function projectModLabel(
+  result: ModerationResult,
+  label: ModerationResult["labels"][number],
+): Flag | null {
+  let category: RiskCategory;
+  if (label === "curse" || label === "strong_curse") {
+    category = "profanity" as RiskCategory;
+  } else if (label === "nsfw_sexual") {
+    category = "nsfw" as RiskCategory;
+  } else if (label === "violent") {
+    category = "violence" as RiskCategory;
+  } else if (label === "hate") {
+    category = "hate_speech" as RiskCategory;
+  } else {
+    return null;
+  }
+
+  const severityMap: Record<string, Severity> = {
+    mild: "low",
+    strong: "medium",
+    severe: "high",
+  };
+  const severity: Severity = result.severity
+    ? (severityMap[result.severity] ?? "low")
+    : "low";
+
+  const reasonMap: Record<string, string> = {
+    curse: "Profanity",
+    strong_curse: "Strong profanity",
+    nsfw_sexual: "Sexual content",
+    violent: "Violent content",
+    hate: "Hate speech / slur",
+  };
+
+  const firstHit = result.phase1.hits[0];
+
+  return {
+    category,
+    severity,
+    confidence: 0.9,
+    reason: reasonMap[label] ?? label,
+    detector: "gate",
+    evidence: firstHit
+      ? { textStart: firstHit.start, textEnd: firstHit.end }
+      : undefined,
+  };
+}
+
+/**
+ * Batch tweets to the server-side gate route and return a map of tweet id →
+ * projected Flag[]. Skips the call entirely when none of the four moderation
+ * categories is enabled.
+ */
+async function fetchModerationFlags(
+  jobId: string,
+  tweets: Array<{ id: string; text: string }>,
+  enabledCategories: RiskCategory[],
+): Promise<Map<string, Flag[]>> {
+  const enabledSet = new Set(enabledCategories);
+  const anyModEnabled = [...MODERATION_CATEGORIES].some((c) =>
+    enabledSet.has(c),
+  );
+  if (!anyModEnabled || tweets.length === 0) return new Map();
+
+  const map = new Map<string, Flag[]>();
+
+  // Batch in chunks of ≤50.
+  for (let i = 0; i < tweets.length; i += 50) {
+    const chunk = tweets.slice(i, i + 50);
+    let results: ModerationResult[];
+    try {
+      const res = await fetch("/api/moderation/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId,
+          items: chunk.map((t) => ({ id: t.id, text: t.text })),
+        }),
+      });
+      if (!res.ok) continue; // fail-open: skip moderation flags for this chunk
+      const data = (await res.json()) as { results: ModerationResult[] };
+      results = data.results;
+    } catch {
+      continue; // network error — fail-open
+    }
+
+    for (const result of results) {
+      const flags: Flag[] = [];
+      for (const label of result.labels) {
+        const flag = projectModLabel(result, label);
+        if (!flag) continue;
+        // Only surface flags for enabled categories.
+        if (!enabledSet.has(flag.category)) continue;
+        flags.push(flag);
+      }
+      if (flags.length > 0) map.set(result.id, flags);
+    }
+  }
+
+  return map;
+}
 
 export type AuditSnapshot = {
   progress: AuditJobProgress;
@@ -90,6 +205,8 @@ export async function runAudit(args: RunAuditArgs): Promise<AuditSnapshot> {
   const tweets = await fetchTweets({ jobId, live: args.live });
   if (signal?.aborted) throw new AbortError();
 
+  const modFlags = await fetchModerationFlags(jobId, tweets, enabledCategories);
+
   const posts: AuditedPost[] = [];
   const stats: Partial<Record<RiskCategory, number>> = {};
   let flagged = 0;
@@ -105,7 +222,8 @@ export async function runAudit(args: RunAuditArgs): Promise<AuditSnapshot> {
   for (const tweet of tweets) {
     if (signal?.aborted) throw new AbortError();
 
-    const { flags, redactedText } = detect(tweet.text, enabledCategories);
+    const { flags: regexFlags, redactedText } = detect(tweet.text, enabledCategories);
+    const flags = [...regexFlags, ...(modFlags.get(tweet.id) ?? [])];
     if (flags.length > 0) {
       flagged++;
       const seen = new Set<RiskCategory>();
@@ -217,6 +335,14 @@ export async function runLikesDrain(args: LikesDrainArgs): Promise<LikesDrainRes
       break;
     }
 
+    // Moderate the page in one batch before charging individual tweets.
+    // Fail-open: moderation errors produce an empty map, not a stop.
+    const pageModFlags = await fetchModerationFlags(
+      jobId,
+      page.tweets,
+      enabledCategories,
+    );
+
     for (const tweet of page.tweets) {
       if (processedCount >= likesCap) break;
 
@@ -240,7 +366,8 @@ export async function runLikesDrain(args: LikesDrainArgs): Promise<LikesDrainRes
       }
 
       // Charged successfully — detect and accumulate.
-      const { flags, redactedText } = detect(tweet.text, enabledCategories);
+      const { flags: regexFlagsC, redactedText } = detect(tweet.text, enabledCategories);
+      const flags = [...regexFlagsC, ...(pageModFlags.get(tweet.id) ?? [])];
       if (flags.length > 0) {
         flagged++;
         const seen = new Set<RiskCategory>();
