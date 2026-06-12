@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { scanName, StatusBadge } from "@/components/CardList";
 import { RISK_LABELS, type RiskCategory } from "@/lib/audit/types";
-import { deleteJob } from "./actions";
+import { DeleteScanButton } from "./DeleteScanButton";
 
 function categoryLabels(codes: string[] | null): string[] {
   return (codes ?? [])
@@ -81,15 +81,7 @@ export default async function ScansPage() {
                   <StatusBadge status={j.status} />
                 </Link>
 
-                <form action={deleteJob.bind(null, j.job_id)}>
-                  <button
-                    type="submit"
-                    aria-label="Delete scan"
-                    className="flex h-full items-center justify-center rounded-xl border border-line px-3.5 text-ink-3 transition-colors hover:border-crit/40 hover:bg-crit-soft hover:text-crit"
-                  >
-                    ✕
-                  </button>
-                </form>
+                <DeleteScanButton jobId={j.job_id} />
               </li>
             );
           })}

@@ -30,7 +30,7 @@ Use **pnpm**, never npm/yarn. Always run typecheck + lint before declaring done.
 ## Architecture map (`web/src`)
 
 - `app/` — routes. `page.tsx` landing, `login/`, `start/` (audit intake + inline auth),
-  `portal/` (auth-gated: `jobs/`, `jobs/[jobId]`, `jobs/new`, `settings/`).
+  `portal/` (auth-gated: `scans/`, `scans/[jobId]`, `scans/new`, `settings/`).
 - `app/api/` — `x/tweets` (ingest + billing gate), `stripe/checkout`, `stripe/webhook`.
   All `export const runtime = "nodejs"`.
 - `app/auth/callback/route.ts` — OAuth code exchange + captures X tokens.
