@@ -16,6 +16,7 @@ import { GET } from "@/app/api/x/tweets/route";
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+vi.mock("@/lib/supabase/admin",  () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/x/oauth",         () => ({
   resolveConnectionId: vi.fn(),
   getValidToken:       vi.fn(),
@@ -32,6 +33,7 @@ vi.mock("@/lib/x/api", () => ({
 }));
 
 const { createClient }      = await import("@/lib/supabase/server");
+const { createAdminClient } = await import("@/lib/supabase/admin");
 const { resolveConnectionId, getValidToken } = await import("@/lib/x/oauth");
 const { getMe, listTimeline, listLikedTweets } = await import("@/lib/x/api");
 
@@ -55,12 +57,24 @@ function makeSupabaseClient(sources: string[]) {
   };
 }
 
+/** Admin client whose job_charges lookup resolves to `charge` (null = unpaid). */
+function makeAdminClient(charge: { job_id: string } | null) {
+  const mockQuery = {
+    select:      vi.fn().mockReturnThis(),
+    eq:          vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({ data: charge }),
+  };
+  return { from: vi.fn().mockReturnValue(mockQuery) };
+}
+
 function makeRequest(jobId = "job1") {
   return new Request(`http://127.0.0.1:3000/api/x/tweets?jobId=${jobId}`);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Job is charged by default; the 402 test overrides this.
+  vi.mocked(createAdminClient).mockReturnValue(makeAdminClient({ job_id: "job1" }) as never);
   vi.mocked(resolveConnectionId).mockResolvedValue("conn1");
   vi.mocked(getValidToken).mockResolvedValue("access_token");
   vi.mocked(getMe).mockResolvedValue(ME);
@@ -152,6 +166,15 @@ describe("GET /api/x/tweets — source selection", () => {
 
     const res = await GET(makeRequest());
     expect(res.status).toBe(404);
+  });
+
+  it("returns 402 when the job has no job_charges row (unpaid)", async () => {
+    vi.mocked(createClient).mockResolvedValue(makeSupabaseClient(["own_text"]) as never);
+    vi.mocked(createAdminClient).mockReturnValue(makeAdminClient(null) as never);
+
+    const res = await GET(makeRequest());
+    expect(res.status).toBe(402);
+    expect(listTimeline).not.toHaveBeenCalled();
   });
 
   it("returns 409 when no X connection is found for the user", async () => {

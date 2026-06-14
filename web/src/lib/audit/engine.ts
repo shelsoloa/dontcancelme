@@ -273,8 +273,20 @@ export type LikesDrainArgs = {
   initialCursor: string | undefined;
   /** Items already processed (from audit_jobs.likes_processed). */
   initialProcessed: number;
+  /**
+   * Platform post IDs already charged + scanned in a previous (interrupted)
+   * run — from the localStorage checkpoint. Matching tweets are skipped
+   * (no charge, no detect, no push: they're already in `priorPosts`) but still
+   * counted, so re-fetching a partially-processed page never double-charges.
+   */
+  processedIds?: Set<string>;
   /** Called after each tweet is charged and scanned. */
   onProgress?: (snapshot: AuditSnapshot, processedCount: number) => void;
+  /**
+   * Called (and awaited) after each fully processed page with the cursor for
+   * the NEXT page. Persist it so an interrupted drain resumes where it left off.
+   */
+  onPageComplete?: (processedCount: number, nextCursor: string | undefined) => Promise<void> | void;
   /** Called when balance is exhausted OR the user stops the scan. */
   onExhausted?: (processedCount: number, nextCursor: string | undefined) => void;
   /** Accumulated posts from Phase A (merged into each snapshot). */
@@ -303,7 +315,8 @@ export type LikesDrainResult =
 export async function runLikesDrain(args: LikesDrainArgs): Promise<LikesDrainResult> {
   const {
     jobId, userId, enabledCategories, likesCap,
-    initialCursor, initialProcessed, onProgress, onExhausted,
+    initialCursor, initialProcessed, processedIds,
+    onProgress, onPageComplete, onExhausted,
     priorPosts, priorStats, signal,
   } = args;
   const stepDelayMs = args.stepDelayMs ?? 0;
@@ -383,6 +396,13 @@ export async function runLikesDrain(args: LikesDrainArgs): Promise<LikesDrainRes
       const tweet = page.tweets[j];
       if (processedCount >= likesCap) break;
 
+      // Already charged + scanned in an interrupted run — count it and move on.
+      if (processedIds?.has(tweet.id)) {
+        processedCount++;
+        onProgress?.(snapshot(), processedCount);
+        continue;
+      }
+
       // Charge for this tweet; stop if balance is insufficient.
       let chargeResult;
       try {
@@ -441,8 +461,9 @@ export async function runLikesDrain(args: LikesDrainArgs): Promise<LikesDrainRes
       }
     }
 
-    // Page complete — advance cursor.
+    // Page complete — advance cursor and persist the resume point.
     cursor = page.nextCursor;
+    await onPageComplete?.(processedCount, cursor);
 
     if (!cursor) break; // end of liked tweets
   }

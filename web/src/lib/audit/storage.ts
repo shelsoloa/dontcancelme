@@ -18,13 +18,17 @@ import type {
 
 export type StoredAudit = {
   jobId: string;
-  status: "completed" | "failed";
+  /** "running" = in-flight checkpoint saved mid-run so an interrupted scan can
+   *  resume without re-scanning (or re-charging) what was already processed. */
+  status: "completed" | "failed" | "running";
+  /** True once Phase A (deterministic) finished. Only meaningful while "running". */
+  deterministicDone?: boolean;
   posts: AuditedPost[];
   progress: AuditJobProgress;
   /** Per-category flagged counts. */
   stats: Partial<Record<RiskCategory, number>>;
-  /** ISO 8601. */
-  finishedAt: string;
+  /** ISO 8601. Absent while the run is still in flight. */
+  finishedAt?: string;
 };
 
 const key = (jobId: string) => `audit:${jobId}`;

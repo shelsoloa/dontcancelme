@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getValidToken, resolveConnectionId } from "@/lib/x/oauth";
 import {
   getMe,
@@ -111,6 +112,20 @@ export async function GET(request: Request) {
 
   const sources  = parseSources(job.enabled_sources);
   const scanLimit = typeof job.scan_limit === "number" ? job.scan_limit : null;
+
+  // Defense in depth: tweets are only served once charge_deterministic has
+  // succeeded for this job (it records a job_charges row on every success,
+  // including fully free-tier runs). Prevents an unpaid job from being run by
+  // hitting this route directly.
+  const admin = createAdminClient();
+  const { data: charge } = await admin
+    .from("job_charges")
+    .select("job_id")
+    .eq("job_id", jobId)
+    .maybeSingle();
+  if (!charge) {
+    return NextResponse.json({ error: "payment_required" }, { status: 402 });
+  }
 
   const connectionId = await resolveConnectionId(user.id, job.connection_id);
   if (!connectionId) {

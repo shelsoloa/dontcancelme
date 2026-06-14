@@ -51,6 +51,18 @@ export async function fetchTweets(
 export type ChargeResult = { shortfall: number };
 
 /**
+ * Thrown when the charge endpoint reports the job has no persisted quote
+ * (402 quote_missing) — the user skipped the quote → checkout flow. The
+ * runner redirects to the quote page instead of failing the job.
+ */
+export class QuoteMissingError extends Error {
+  constructor() {
+    super("No quote for this job");
+    this.name = "QuoteMissingError";
+  }
+}
+
+/**
  * Charge the user's credit balance for the deterministic portion of a job.
  * Idempotent (keyed on job_id). Returns shortfall (0 = success).
  */
@@ -63,6 +75,9 @@ export async function chargeDeterministic(jobId: string): Promise<ChargeResult> 
   });
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
+    if (res.status === 402 && d.error === "quote_missing") {
+      throw new QuoteMissingError();
+    }
     throw new Error(d.error ?? `Charge failed (${res.status})`);
   }
   return res.json() as Promise<ChargeResult>;

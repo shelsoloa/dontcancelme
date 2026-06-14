@@ -178,7 +178,8 @@ export async function listTimeline(
     url.searchParams.set("media.fields", "url,preview_image_url,type");
     // If reposts aren't wanted, let X drop them server-side.
     if (!filter.includeReposts) url.searchParams.set("exclude", "retweets");
-    if (paginationToken) url.searchParams.set("pagination_token", paginationToken);
+    if (paginationToken)
+      url.searchParams.set("pagination_token", paginationToken);
 
     const json = (await xGet(url, accessToken)) as TimelinePage;
     const batch = json.data ?? [];
@@ -273,7 +274,8 @@ export async function listLikedTweets(
     url.searchParams.set("expansions", "author_id,attachments.media_keys");
     url.searchParams.set("user.fields", "username,profile_image_url");
     url.searchParams.set("media.fields", "url,preview_image_url,type");
-    if (paginationToken) url.searchParams.set("pagination_token", paginationToken);
+    if (paginationToken)
+      url.searchParams.set("pagination_token", paginationToken);
 
     const json = (await xGet(url, accessToken)) as LikedPage;
     const batch = json.data ?? [];
@@ -347,14 +349,14 @@ export async function listLikedTweetsPage(
 
 // ---------------------------------------------------------------------------
 // App-bearer (app-only) helpers for full-archive endpoints.
-// Uses X_BEARER_TOKEN (server-only env), NOT the user's OAuth access token.
+// Uses X_CLIENT_BEARER_TOKEN (server-only env), NOT the user's OAuth access token.
 // Required for GET /2/tweets/counts/all (paid self-serve / Pro tier).
 // ---------------------------------------------------------------------------
 
 function appBearer(): string {
-  const token = process.env.X_BEARER_TOKEN;
+  const token = process.env.X_CLIENT_BEARER_TOKEN;
   if (!token) {
-    throw new XApiError(503, "X_BEARER_TOKEN is not configured");
+    throw new XApiError(503, "X_CLIENT_BEARER_TOKEN is not configured");
   }
   return token;
 }
@@ -390,16 +392,16 @@ async function countAll(query: string): Promise<number> {
 }
 
 export type OwnCounts = {
-  textCount:   number;  // own text posts (no media) — 1 unit each
-  imageCount:  number;  // own image posts (has:images, excl. video) — 4 units each
-  repostCount: number;  // own reposts (is:retweet) — 1 unit each
+  textCount: number; // own text posts (no media) — 1 unit each
+  imageCount: number; // own image posts (has:images, excl. video) — 4 units each
+  repostCount: number; // own reposts (is:retweet) — 1 unit each
 };
 
 /**
  * Count the user's own tweets by type using the full-archive counts endpoint.
  * Returns exact counts for billing (text / image / repost breakdown).
  *
- * Requires X_BEARER_TOKEN with Pro/Enterprise API access.
+ * Requires X_CLIENT_BEARER_TOKEN with Pro/Enterprise API access.
  * Video-only tweets are excluded from both text and image buckets (unsupported).
  */
 export async function countOwnTweets(username: string): Promise<OwnCounts> {

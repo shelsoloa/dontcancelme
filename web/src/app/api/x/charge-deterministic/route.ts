@@ -49,12 +49,18 @@ export async function POST(request: Request) {
     deterministic: { textCount: number; imageCount: number; repostCount: number };
   } | null;
 
-  // If there's no quote (old job or direct navigation), default to zero items
-  // so the charge_deterministic call is a no-op (returns 0 immediately).
-  const textItems  = quote?.deterministic.textCount  ?? 0;
-  const imageItems = quote?.deterministic.imageCount ?? 0;
+  // No persisted quote means the quote → checkout flow was skipped (direct
+  // navigation to the runner). Refuse to charge — the runner sends the user
+  // back to the quote page. Treating this as "zero items" would let an
+  // unquoted job run for free.
+  if (!quote) {
+    return NextResponse.json({ error: "quote_missing" }, { status: 402 });
+  }
+
+  const textItems  = quote.deterministic.textCount;
+  const imageItems = quote.deterministic.imageCount;
   // reposts: text rate, so pass as text items for billing purposes.
-  const repostItems = quote?.deterministic.repostCount ?? 0;
+  const repostItems = quote.deterministic.repostCount;
 
   const admin = createAdminClient();
   const { data: shortfall, error: chargeErr } = await admin.rpc(

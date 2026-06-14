@@ -2,14 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   runAudit,
   runLikesDrain,
   type AuditSnapshot,
 } from "@/lib/audit/engine";
-import { chargeDeterministic } from "@/lib/audit/source";
-import { loadAudit, saveAudit, type StoredAudit } from "@/lib/audit/storage";
+import { chargeDeterministic, QuoteMissingError } from "@/lib/audit/source";
+import {
+  clearAudit,
+  loadAudit,
+  saveAudit,
+  type StoredAudit,
+} from "@/lib/audit/storage";
 import {
   RISK_LABELS,
   type AuditedPost,
@@ -39,14 +45,18 @@ type JobMeta = {
   likesProcessed: number;
   likesCursor: string | null;
   likesEnabled: boolean;
+  /** Deterministic cost (USD string) from the persisted quote, for the start gate. */
+  detUsd: string | null;
 };
 
 type Phase =
   | { kind: "loading" }
   | { kind: "not_found" }
+  | { kind: "ready_to_run" }
   | { kind: "running"; snapshot: AuditSnapshot; label: string }
   | { kind: "done"; result: StoredAudit }
   | { kind: "missing_results" }
+  | { kind: "interrupted"; snapshot: AuditSnapshot }
   | {
       kind: "likes_exhausted";
       processedCount: number;
@@ -63,11 +73,21 @@ const SEVERITY_STYLES: Record<Severity, string> = {
   critical: "bg-crit-soft text-crit",
 };
 
-export default function JobRunner({ jobId }: { jobId: string }) {
+export default function JobRunner({
+  jobId,
+  authorized = false,
+}: {
+  jobId: string;
+  /** True only when the user just authorized this spend on the prior screen. */
+  authorized?: boolean;
+}) {
+  const router = useRouter();
   const [meta, setMeta] = useState<JobMeta | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [live, setLive] = useState(false);
   const startedRef = useRef(false);
+  /** Last localStorage checkpoint write (ms) — throttles mid-run saves. */
+  const lastCheckpointAtRef = useRef(0);
   /**
    * Holds the AbortController for the current run.  Only ever aborted via the
    * "Stop scan" button click — NEVER in useEffect cleanup (StrictMode
@@ -88,7 +108,7 @@ export default function JobRunner({ jobId }: { jobId: string }) {
       const { data: job } = await supabase
         .from("audit_jobs")
         .select(
-          "job_id, status, enabled_categories, enabled_sources, created_at, started_at, scan_limit, likes_cap, likes_processed, likes_cursor",
+          "job_id, status, enabled_categories, enabled_sources, created_at, started_at, scan_limit, likes_cap, likes_processed, likes_cursor, quote",
         )
         .eq("job_id", jobId)
         .maybeSingle();
@@ -106,6 +126,10 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         : [];
       const likesEnabled = sources.includes("likes");
 
+      const quote = job.quote as {
+        deterministic?: { usd?: string };
+      } | null;
+
       const jobMeta: JobMeta = {
         jobId: job.job_id,
         status: job.status,
@@ -119,11 +143,28 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         likesCursor:
           typeof job.likes_cursor === "string" ? job.likes_cursor : null,
         likesEnabled,
+        detUsd:
+          typeof quote?.deterministic?.usd === "string"
+            ? quote.deterministic.usd
+            : null,
       };
       setMeta(jobMeta);
 
       const existing = loadAudit(jobId);
       if (existing) {
+        if (existing.status === "running") {
+          // Mid-run checkpoint — the user left the page during a scan.
+          // NEVER auto-restart: show partial results + a Resume button.
+          setPhase({
+            kind: "interrupted",
+            snapshot: {
+              progress: existing.progress,
+              stats: existing.stats,
+              posts: existing.posts,
+            },
+          });
+          return;
+        }
         // Results already in localStorage — but if likes are enabled and the
         // job was exhausted mid-drain, show the exhaustion UI so the user can
         // top up and resume.
@@ -157,21 +198,73 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         return;
       }
 
-      // queued or running with no local results → run it now.
-      void start(jobMeta, user.id, isLive, supabase);
+      if (job.status === "running") {
+        // A run was interrupted but no checkpoint survived (cleared cache or a
+        // different device). Don't auto-restart — let the user resume.
+        setPhase({
+          kind: "interrupted",
+          snapshot: {
+            progress: { total: 0, processed: 0, flagged: 0 },
+            stats: {},
+            posts: [],
+          },
+        });
+        return;
+      }
+
+      // queued with no local results. Spending is ALWAYS gated by an explicit
+      // user action: only auto-run if the user just authorized this spend on the
+      // prior screen (quote "Start"/Stripe success → `authorized`). Otherwise
+      // wait for a click on the "Start scan" button — never auto-charge here.
+      if (authorized) {
+        void start(jobMeta, user.id, isLive, supabase);
+      } else {
+        setPhase({ kind: "ready_to_run" });
+      }
     })();
     // No abort-on-cleanup: StrictMode double-mounts; aborting would kill the real run.
-  }, [jobId]);
+  }, [jobId, authorized]);
 
   async function start(
     jobMeta: JobMeta,
     userId: string,
     isLive: boolean,
     supabase: ReturnType<typeof createClient>,
+    checkpoint?: StoredAudit | null,
   ) {
     if (startedRef.current) return;
     startedRef.current = true;
     lastSnapshotRef.current = null;
+
+    // Resume from the checkpoint only if Phase A fully completed; a partial
+    // Phase A is redone from scratch (charge_deterministic is idempotent, so
+    // the redo is free).
+    const resumeFrom =
+      checkpoint != null &&
+      (checkpoint.deterministicDone === true ||
+        checkpoint.status === "completed")
+        ? checkpoint
+        : null;
+
+    /** Persist an in-flight checkpoint so leaving the page never loses progress. */
+    function saveCheckpoint(
+      snapshot: AuditSnapshot,
+      deterministicDone: boolean,
+      force = false,
+    ) {
+      if (snapshot.posts.length === 0) return; // nothing worth resuming
+      const now = Date.now();
+      if (!force && now - lastCheckpointAtRef.current < 1000) return;
+      lastCheckpointAtRef.current = now;
+      saveAudit({
+        jobId: jobMeta.jobId,
+        status: "running",
+        deterministicDone,
+        posts: snapshot.posts,
+        progress: snapshot.progress,
+        stats: snapshot.stats,
+      });
+    }
 
     // Create a fresh controller for this run.  Only aborted on button click.
     controllerRef.current = new AbortController();
@@ -179,47 +272,89 @@ export default function JobRunner({ jobId }: { jobId: string }) {
 
     setPhase({
       kind: "running",
-      snapshot: {
-        progress: { total: 0, processed: 0, flagged: 0 },
-        stats: {},
-        posts: [],
-      },
-      label: "Fetching tweets…",
+      snapshot: resumeFrom
+        ? {
+            progress: resumeFrom.progress,
+            stats: resumeFrom.stats,
+            posts: resumeFrom.posts,
+          }
+        : {
+            progress: { total: 0, processed: 0, flagged: 0 },
+            stats: {},
+            posts: [],
+          },
+      label: resumeFrom ? "Resuming scan…" : "Fetching tweets…",
     });
 
+    // Keep the original started_at when resuming an interrupted run.
     await supabase
       .from("audit_jobs")
-      .update({ status: "running", started_at: new Date().toISOString() })
+      .update(
+        resumeFrom || checkpoint
+          ? { status: "running" }
+          : { status: "running", started_at: new Date().toISOString() },
+      )
       .eq("job_id", jobMeta.jobId);
 
     try {
-      // ── Phase A: charge + fetch + detect deterministic content ──────────
+      // ── Payment gate: charge (idempotent per job) before any fetching ───
       if (isLive) {
-        const chargeResult = await chargeDeterministic(jobMeta.jobId);
+        let chargeResult;
+        try {
+          chargeResult = await chargeDeterministic(jobMeta.jobId);
+        } catch (err) {
+          if (err instanceof QuoteMissingError) {
+            // The quote → checkout flow was skipped — send the user back to
+            // it instead of running (or failing) the job.
+            await supabase
+              .from("audit_jobs")
+              .update({ status: "queued" })
+              .eq("job_id", jobMeta.jobId);
+            startedRef.current = false;
+            router.replace(`/portal/scans/${jobMeta.jobId}/quote`);
+            return;
+          }
+          throw err;
+        }
         if (chargeResult.shortfall > 0) {
-          throw new Error(
-            `Insufficient credits (shortfall: ${chargeResult.shortfall}). ` +
-              "Please top up your balance from the account page.",
-          );
+          // Balance doesn't cover the quote — back to the quote page to pay.
+          await supabase
+            .from("audit_jobs")
+            .update({ status: "queued" })
+            .eq("job_id", jobMeta.jobId);
+          startedRef.current = false;
+          router.replace(`/portal/scans/${jobMeta.jobId}/quote`);
+          return;
         }
       }
 
-      const deterministic = await runAudit({
-        jobId: jobMeta.jobId,
-        userId,
-        enabledCategories: jobMeta.enabledCategories,
-        live: isLive,
-        stepDelayMs: isLive ? 0 : undefined,
-        signal,
-        onProgress: (snapshot) => {
-          lastSnapshotRef.current = snapshot;
-          setPhase({
-            kind: "running",
-            snapshot,
-            label: "Scanning your posts…",
+      // ── Phase A: fetch + detect deterministic content (skipped on resume) ─
+      const deterministic: AuditSnapshot = resumeFrom
+        ? {
+            progress: resumeFrom.progress,
+            stats: resumeFrom.stats,
+            posts: resumeFrom.posts,
+          }
+        : await runAudit({
+            jobId: jobMeta.jobId,
+            userId,
+            enabledCategories: jobMeta.enabledCategories,
+            live: isLive,
+            stepDelayMs: isLive ? 0 : undefined,
+            signal,
+            onProgress: (snapshot) => {
+              lastSnapshotRef.current = snapshot;
+              saveCheckpoint(snapshot, false);
+              setPhase({
+                kind: "running",
+                snapshot,
+                label: "Scanning your posts…",
+              });
+            },
           });
-        },
-      });
+
+      // Phase A complete — checkpoint it so a mid-drain exit never re-runs it.
+      saveCheckpoint(deterministic, true, true);
 
       // ── Phase B: likes drain (if enabled) ────────────────────────────────
       if (jobMeta.likesEnabled && jobMeta.likesCap && isLive) {
@@ -236,16 +371,38 @@ export default function JobRunner({ jobId }: { jobId: string }) {
           likesCap: jobMeta.likesCap,
           initialCursor: jobMeta.likesCursor ?? undefined,
           initialProcessed: jobMeta.likesProcessed,
+          // On resume, skip (and never re-charge) likes already processed —
+          // a mid-page interruption resumes at the page-start cursor, so the
+          // page's already-charged tweets come back from the API again.
+          processedIds: resumeFrom
+            ? new Set(resumeFrom.posts.map((p) => p.platformPostId))
+            : undefined,
           priorPosts: deterministic.posts,
           priorStats: deterministic.stats,
           signal,
           onProgress: (snapshot, processedCount) => {
             lastSnapshotRef.current = snapshot;
+            saveCheckpoint(snapshot, true);
             setPhase({
               kind: "running",
               snapshot,
               label: `Scanning liked posts (${processedCount} of ${jobMeta.likesCap ?? "??"})…`,
             });
+          },
+          onPageComplete: async (processedCount, nextCursor) => {
+            // Persist the resume point after every page so leaving the page
+            // mid-drain never re-charges already-processed likes. Checkpoint
+            // first (sync): the DB cursor must never get ahead of the saved
+            // results, or a badly-timed exit loses paid-for scans.
+            const snap = lastSnapshotRef.current as AuditSnapshot | null;
+            if (snap) saveCheckpoint(snap, true, true);
+            await supabase
+              .from("audit_jobs")
+              .update({
+                likes_processed: processedCount,
+                likes_cursor: nextCursor ?? null,
+              })
+              .eq("job_id", jobMeta.jobId);
           },
           onExhausted: async (processedCount, nextCursor) => {
             // Persist the cursor before showing the exhaustion/stopped UI.
@@ -391,7 +548,9 @@ export default function JobRunner({ jobId }: { jobId: string }) {
             .update({ status: "completed", finished_at: finishedAt })
             .eq("job_id", jobMeta.jobId);
         } else {
-          // Nothing scanned yet — reset to queued so the user can rerun.
+          // Nothing scanned yet — drop any stale checkpoint and reset to
+          // queued so the user can rerun.
+          clearAudit(jobMeta.jobId);
           await supabase
             .from("audit_jobs")
             .update({ status: "queued" })
@@ -423,6 +582,32 @@ export default function JobRunner({ jobId }: { jobId: string }) {
     })();
   }
 
+  /** Resume an interrupted run from the local checkpoint (if any). */
+  function resume() {
+    if (!meta) return;
+    const supabase = createClient();
+    startedRef.current = false;
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+      // Re-read the drain resume point — the DB cursor is the source of truth.
+      const { data: freshJob } = await supabase
+        .from("audit_jobs")
+        .select("likes_processed, likes_cursor")
+        .eq("job_id", meta.jobId)
+        .maybeSingle();
+      const updatedMeta: JobMeta = {
+        ...meta,
+        likesProcessed: freshJob?.likes_processed ?? meta.likesProcessed,
+        likesCursor: freshJob?.likes_cursor ?? meta.likesCursor,
+      };
+      setMeta(updatedMeta);
+      void start(updatedMeta, user.id, live, supabase, loadAudit(jobId));
+    })();
+  }
+
   /** Mark the job completed and show whatever partial results are in localStorage. */
   function endScan() {
     const stored = loadAudit(jobId);
@@ -433,7 +618,15 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         .update({ status: "completed" })
         .eq("job_id", jobId);
       if (stored) {
-        setPhase({ kind: "done", result: stored });
+        // Normalise a mid-run checkpoint to a terminal record so revisiting
+        // doesn't show the interrupted view again.
+        const finished: StoredAudit = {
+          ...stored,
+          status: "completed",
+          finishedAt: stored.finishedAt ?? new Date().toISOString(),
+        };
+        saveAudit(finished);
+        setPhase({ kind: "done", result: finished });
       } else {
         setPhase({ kind: "missing_results" });
       }
@@ -469,7 +662,9 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         .update({ status: "queued" })
         .eq("job_id", meta.jobId);
 
-      void start(updatedMeta, user.id, live, supabase);
+      // Pass the stored results as a checkpoint so Phase A isn't re-run and
+      // already-drained likes are never re-charged.
+      void start(updatedMeta, user.id, live, supabase, loadAudit(jobId));
     })();
   }
 
@@ -491,6 +686,15 @@ export default function JobRunner({ jobId }: { jobId: string }) {
         <p className="mt-6 text-sm text-ink-2">
           We couldn&apos;t find that scan.
         </p>
+      )}
+
+      {phase.kind === "ready_to_run" && meta && (
+        <ReadyToRunView
+          live={live}
+          detUsd={meta.detUsd}
+          likesEnabled={meta.likesEnabled}
+          onStart={rerun}
+        />
       )}
 
       {phase.kind === "running" && (
@@ -518,6 +722,10 @@ export default function JobRunner({ jobId }: { jobId: string }) {
           </p>
           <RerunButton onClick={rerun} />
         </div>
+      )}
+
+      {phase.kind === "interrupted" && (
+        <InterruptedView snapshot={phase.snapshot} onResume={resume} />
       )}
 
       {phase.kind === "likes_exhausted" && (
@@ -659,6 +867,48 @@ function LikesExhaustedView({
   );
 }
 
+// ── InterruptedView ───────────────────────────────────────────────────────────
+
+function InterruptedView({
+  snapshot,
+  onResume,
+}: {
+  snapshot: AuditSnapshot;
+  onResume: () => void;
+}) {
+  const processed = snapshot.progress.processed;
+  return (
+    <div className="mt-6 rounded-xl border border-line p-6">
+      <h2 className="text-lg font-semibold">Scan interrupted</h2>
+      <p className="mt-2 text-sm text-ink-2">
+        {processed > 0 ? (
+          <>
+            This scan was interrupted after{" "}
+            <strong>{processed.toLocaleString()}</strong> post
+            {processed !== 1 ? "s" : ""}. Resume to pick up where you left off
+            — nothing already scanned is re-scanned or re-charged.
+          </>
+        ) : (
+          "This scan was interrupted before any results were saved on this device. Resume to continue."
+        )}
+      </p>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <button
+          onClick={onResume}
+          className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90"
+        >
+          Resume scan
+        </button>
+      </div>
+      <FlaggedList
+        posts={snapshot.posts.filter((p) => p.flags.length > 0)}
+        className="mt-6"
+        compact
+      />
+    </div>
+  );
+}
+
 // ── StoppedView ───────────────────────────────────────────────────────────────
 
 function StoppedView({
@@ -686,6 +936,61 @@ function StoppedView({
           {actionLabel}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── ReadyToRunView ────────────────────────────────────────────────────────────
+
+/**
+ * Explicit start gate for a queued job. Nothing is fetched or charged until the
+ * user clicks "Start scan" — the app never auto-progresses into a spend.
+ */
+function ReadyToRunView({
+  live,
+  detUsd,
+  likesEnabled,
+  onStart,
+}: {
+  live: boolean;
+  detUsd: string | null;
+  likesEnabled: boolean;
+  onStart: () => void;
+}) {
+  const hasCharge = live && detUsd != null && detUsd !== "0.00";
+
+  return (
+    <div className="mt-6 rounded-xl border border-line p-6">
+      <h2 className="text-lg font-semibold">Ready to scan</h2>
+      <p className="mt-2 text-sm text-ink-2">
+        {!live ? (
+          "This is a sample scan — no charge."
+        ) : hasCharge ? (
+          <>
+            Starting this scan will deduct <strong>${detUsd}</strong> from your
+            credits.
+          </>
+        ) : (
+          "Your posts are covered by your free tier — no charge."
+        )}
+      </p>
+      {live && likesEnabled && (
+        <p className="mt-2 text-xs text-ink-2">
+          Liked posts are metered and charged as they&apos;re scanned. Processing
+          stops when your credits run out.
+        </p>
+      )}
+      <div className="mt-4">
+        <button
+          onClick={onStart}
+          className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90"
+        >
+          Start scan
+        </button>
+      </div>
+      <p className="mt-3 text-xs text-ink-2">
+        Nothing is fetched or charged until you click Start.
+      </p>
     </div>
   );
 }

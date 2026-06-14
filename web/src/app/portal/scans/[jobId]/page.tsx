@@ -7,9 +7,17 @@ import JobRunner from "@/components/JobRunner";
  */
 export default async function JobDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ jobId: string }>;
+  searchParams: Promise<{ paid?: string; start?: string }>;
 }) {
   const { jobId } = await params;
-  return <JobRunner jobId={jobId} />;
+  const sp = await searchParams;
+  // The runner auto-runs (and charges) ONLY when the user explicitly authorized
+  // the spend on the prior screen: "Pay & start" → Stripe success (`paid=1`), or
+  // "Start scan" when existing credits cover it (`start=1`). Every other arrival
+  // (direct nav, reload, balance-covered redirect) must wait for a click.
+  const authorized = sp.paid === "1" || sp.start === "1";
+  return <JobRunner jobId={jobId} authorized={authorized} />;
 }

@@ -89,19 +89,16 @@ export default function QuoteView({ jobId }: { jobId: string }) {
         }
         const quote = (await res.json()) as Quote;
 
-        // If the job is entirely free (0 units needed), skip straight to runner.
+        // If the job is entirely free (0 units needed), go to the runner — but
+        // the runner still gates the (free) run behind an explicit Start click.
         if (quote.totalUpfrontUnits === 0) {
           router.replace(`/portal/scans/${jobId}`);
           return;
         }
 
-        // If the user's current balance already covers the whole quote, also
-        // skip checkout (charge_deterministic at runner-start will deduct it).
-        if (quote.currentBalance >= quote.totalUpfrontUnits) {
-          router.replace(`/portal/scans/${jobId}`);
-          return;
-        }
-
+        // Otherwise show the quote and let the user decide. When their balance
+        // already covers it there's no checkout — but we never silently skip to
+        // the runner and spend their credits; they must click Start.
         setPhase({ kind: "ready", quote });
       } catch (e) {
         setPhase({
@@ -112,6 +109,15 @@ export default function QuoteView({ jobId }: { jobId: string }) {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
+
+  /**
+   * Balance already covers the quote — no checkout needed. Navigate to the
+   * runner WITH the authorization flag, since clicking this button IS the
+   * user's explicit consent to spend their credits.
+   */
+  function startWithCredits() {
+    router.push(`/portal/scans/${jobId}?start=1`);
+  }
 
   async function pay(quote: Quote) {
     setPhase({ kind: "paying" });
@@ -177,7 +183,9 @@ export default function QuoteView({ jobId }: { jobId: string }) {
         <QuoteDetails
           quote={phase.quote}
           paying={false}
+          needsCheckout={phase.quote.currentBalance < phase.quote.totalUpfrontUnits}
           onPay={() => pay(phase.quote)}
+          onStart={startWithCredits}
           payError={payError}
         />
       )}
@@ -192,12 +200,16 @@ export default function QuoteView({ jobId }: { jobId: string }) {
 function QuoteDetails({
   quote,
   paying,
+  needsCheckout,
   onPay,
+  onStart,
   payError,
 }: {
   quote: Quote;
   paying: boolean;
+  needsCheckout: boolean;
   onPay: () => void;
+  onStart: () => void;
   payError: string | null;
 }) {
   const { deterministic, likes } = quote;
@@ -287,20 +299,23 @@ function QuoteDetails({
           <span>${quote.totalUpfrontUsd}</span>
         </div>
         <p className="mt-1 text-xs text-ink-2">
-          {quote.totalUpfrontUnits.toLocaleString()} credits · unused credits
-          stay in your balance.
+          {needsCheckout
+            ? `${quote.totalUpfrontUnits.toLocaleString()} credits · unused credits stay in your balance.`
+            : `Covered by your balance of ${quote.currentBalance.toLocaleString()} credits.`}
         </p>
 
         {payError && <p className="mt-3 text-sm text-crit">{payError}</p>}
 
         <button
-          onClick={onPay}
+          onClick={needsCheckout ? onPay : onStart}
           disabled={paying}
           className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {paying
-            ? "Redirecting to checkout…"
-            : `Pay $${quote.totalUpfrontUsd} & start scan`}
+          {needsCheckout
+            ? paying
+              ? "Redirecting to checkout…"
+              : `Pay $${quote.totalUpfrontUsd} & start scan`
+            : `Start scan — use $${quote.totalUpfrontUsd} of your credits`}
         </button>
       </div>
     </div>
