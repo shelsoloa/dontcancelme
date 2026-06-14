@@ -11,7 +11,7 @@ import type { RawTweet } from "@/lib/audit/sampleTweets";
  * a stalled X connection would otherwise hang the ingestion route forever.
  *
  * App-bearer functions (countOwnTweets) use the app-level Bearer Token from
- * process.env.X_BEARER_TOKEN — never the user's OAuth token. This is required
+ * process.env.X_CLIENT_BEARER_TOKEN — never the user's OAuth token. This is required
  * for the full-archive counts endpoint.
  */
 
