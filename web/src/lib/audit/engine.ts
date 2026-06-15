@@ -26,6 +26,7 @@ const MAX_EMPTY_STREAK = 8;
 import type {
   AuditedPost,
   AuditJobProgress,
+  AuditSource,
   Flag,
   ModerationResult,
   RiskCategory,
@@ -192,6 +193,7 @@ function toPost(
   userId: string,
   flags: ReturnType<typeof detect>["flags"],
   redactedText: string,
+  auditSource?: AuditSource,
 ): AuditedPost {
   const now = new Date().toISOString();
   return {
@@ -210,6 +212,7 @@ function toPost(
     flags,
     decision: "pending",
     createdAt: now,
+    auditSource,
   };
 }
 
@@ -265,7 +268,7 @@ export async function runAudit(args: RunAuditArgs): Promise<AuditSnapshot> {
       }
     }
 
-    posts.push(toPost(tweet, jobId, userId, flags, redactedText));
+      posts.push(toPost(tweet, jobId, userId, flags, redactedText, "likes"));
 
     onProgress?.(snapshot());
     if (stepDelayMs > 0) {
@@ -460,7 +463,7 @@ export async function runLikesDrain(args: LikesDrainArgs): Promise<LikesDrainRes
           stats[f.category] = (stats[f.category] ?? 0) + 1;
         }
       }
-      posts.push(toPost(tweet, jobId, userId, flags, redactedText));
+    posts.push(toPost(tweet, jobId, userId, flags, redactedText, tweet.auditSource));
       processedCount++;
 
       onProgress?.(snapshot(), processedCount);

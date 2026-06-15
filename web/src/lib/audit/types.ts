@@ -192,6 +192,8 @@ export type AuditedPost = {
   decidedAt?: string;
   /** When we created this row (ISO 8601). */
   createdAt: string;
+  /** Which audit source this post came from (absent for sample data). */
+  auditSource?: AuditSource;
 };
 
 export type AuditJobStatus =

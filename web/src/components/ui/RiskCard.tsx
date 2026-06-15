@@ -24,6 +24,8 @@ import {
   type DesignSeverity,
 } from "@/lib/audit/severity";
 import { Badge } from "./Badge";
+import type { AuditedPost } from "@/lib/audit/types";
+import { DeleteTweetButton } from "@/components/DeleteTweetButton";
 
 interface RiskReason {
   label: string;
@@ -49,6 +51,8 @@ interface RiskCardProps {
   href?: string;
   onDismiss?: () => void;
   className?: string;
+  /** Post data for the delete button. When absent, no delete button is shown. */
+  onDelete?: { post: AuditedPost; onDeleted: () => void };
 }
 
 export function RiskCard({
@@ -64,6 +68,7 @@ export function RiskCard({
   redactReason = "flagged content",
   href,
   onDismiss,
+  onDelete,
   className = "",
 }: RiskCardProps) {
   const [revealed, setReveal] = useState(false);
@@ -212,6 +217,12 @@ export function RiskCard({
           >
             Dismiss
           </button>
+        )}
+        {onDelete && (
+          <DeleteTweetButton
+            post={onDelete.post}
+            onDeleted={onDelete.onDeleted}
+          />
         )}
       </div>
     </article>

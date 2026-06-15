@@ -44,7 +44,7 @@ export function AuthPanel({
         redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
           next,
         )}`,
-        scopes: "users.read tweet.read like.read offline.access",
+        scopes: "users.read tweet.read tweet.write like.read like.write offline.access",
       },
     });
     if (error) setError(error.message);

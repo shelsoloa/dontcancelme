@@ -46,6 +46,21 @@ async function xGet(url: string | URL, accessToken: string): Promise<unknown> {
   return res.json();
 }
 
+async function xDelete(url: string | URL, accessToken: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (e) {
+    throw new XApiError(504, e instanceof Error ? e.message : "request failed");
+  }
+  if (!res.ok) throw new XApiError(res.status, await res.text());
+}
+
 export type XMe = {
   id: string;
   username: string;
@@ -419,4 +434,35 @@ export async function countOwnTweets(username: string): Promise<OwnCounts> {
   ]);
 
   return { textCount, imageCount, repostCount };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Delete / unlike / un-repost
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Delete one of the authenticated user's own tweets. */
+export async function deleteTweet(
+  accessToken: string,
+  userId: string,
+  tweetId: string,
+): Promise<void> {
+  await xDelete(`${X_API}/users/${userId}/tweets/${tweetId}`, accessToken);
+}
+
+/** Unlike a tweet the authenticated user previously liked. */
+export async function unlikeTweet(
+  accessToken: string,
+  userId: string,
+  tweetId: string,
+): Promise<void> {
+  await xDelete(`${X_API}/users/${userId}/likes/${tweetId}`, accessToken);
+}
+
+/** Un-repost (undo a retweet). */
+export async function unretweet(
+  accessToken: string,
+  userId: string,
+  tweetId: string,
+): Promise<void> {
+  await xDelete(`${X_API}/users/${userId}/retweets/${tweetId}`, accessToken);
 }

@@ -33,6 +33,7 @@ import {
 import { RiskCard } from "@/components/ui/RiskCard";
 import { StatStrip } from "@/components/ui/StatStrip";
 import { StatusBadge, formatDate, scanName } from "@/components/CardList";
+import { DeleteTweetButton } from "@/components/DeleteTweetButton";
 
 type JobMeta = {
   jobId: string;
@@ -1077,12 +1078,31 @@ function ResultsView({
   // Only crit/high/med/low are clickable; "clear" is excluded.
   const [activeSeverity, setActiveSeverity] = useState<DesignSeverity | null>(null);
 
+  // Deleted post IDs — removed from view and localStorage.
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+
+  function handleDeleted(postId: string) {
+    // Remove from localStorage
+    const stored = loadAudit(meta.jobId);
+    if (stored) {
+      const updated: StoredAudit = {
+        ...stored,
+        posts: stored.posts.filter((p) => p.platformPostId !== postId),
+      };
+      saveAudit(updated);
+    }
+
+    // Remove from view immediately
+    setDeletedIds((prev) => new Set(prev).add(postId));
+  }
+
   function toggleSeverity(sev: DesignSeverity) {
     setActiveSeverity((prev) => (prev === sev ? null : sev));
   }
 
   const visiblePosts = allFlaggedPosts.filter(
     (p) =>
+      !deletedIds.has(p.platformPostId) &&
       p.flags.some((f) => activeCategories.has(f.category)) &&
       (activeSeverity === null || postSeverity(p.flags) === activeSeverity),
   );
@@ -1212,22 +1232,34 @@ function ResultsView({
         </div>
       )}
 
-      <p className="rounded-lg bg-low-soft px-4 py-2 text-xs text-low">
-        {live
-          ? "Deletion isn't available yet — review the flagged posts below."
-          : "Sample data — sign in with X to scan real tweets. Deletion isn't available yet; review the flagged posts below."}
-      </p>
+      {live ? (
+        <p className="rounded-lg bg-low-soft px-4 py-2 text-xs text-low">
+          Click the trash icon on any flagged post to delete it from X.
+        </p>
+      ) : (
+        <p className="rounded-lg bg-low-soft px-4 py-2 text-xs text-low">
+          Sample data — sign in with X to scan and delete real tweets.
+        </p>
+      )}
 
       <section>
         <h2 className="text-sm font-medium text-ink-2">
           {isAllOn
-            ? `Flagged (${allFlaggedPosts.length})`
-            : `Flagged (${visiblePosts.length} of ${allFlaggedPosts.length})`}
+            ? `Flagged (${allFlaggedPosts.length - deletedIds.size})`
+            : `Flagged (${visiblePosts.length} of ${allFlaggedPosts.length - deletedIds.size})`}
         </h2>
         {visiblePosts.length === 0 ? (
           <p className="mt-3 text-sm text-ink-2">Nothing flagged. 🎉</p>
         ) : (
-          <FlaggedList posts={visiblePosts} className="mt-3" />
+          <FlaggedList
+            posts={visiblePosts}
+            className="mt-3"
+            onDelete={
+              live
+                ? (postId) => handleDeleted(postId)
+                : undefined
+            }
+          />
         )}
       </section>
 
@@ -1270,10 +1302,12 @@ function FlaggedList({
   posts,
   className = "",
   compact = false,
+  onDelete,
 }: {
   posts: AuditedPost[];
   className?: string;
   compact?: boolean;
+  onDelete?: (platformPostId: string) => void;
 }) {
   if (posts.length === 0) return null;
 
@@ -1302,6 +1336,12 @@ function FlaggedList({
                 ))}
               </div>
             </div>
+            {onDelete && p.auditSource && (
+              <DeleteTweetButton
+                post={p}
+                onDeleted={() => onDelete(p.platformPostId)}
+              />
+            )}
           </li>
         ))}
       </ul>
@@ -1331,6 +1371,11 @@ function FlaggedList({
               redacted={redacted}
               redactReason={redactReason(p.flags)}
               href={p.url}
+              onDelete={
+                onDelete && p.auditSource
+                  ? { post: p, onDeleted: () => onDelete(p.platformPostId) }
+                  : undefined
+              }
             />
           </li>
         );

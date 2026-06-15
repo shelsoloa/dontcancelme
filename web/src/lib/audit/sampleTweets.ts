@@ -9,6 +9,8 @@
  * All handles/values are fictional. The credential-looking strings are bogus.
  */
 
+import type { AuditSource } from "./types";
+
 /** A raw tweet as surfaced by the source (pre-detection). */
 export type RawTweet = {
   /** Tweet id — string; 64-bit ids overflow JS numbers. */
@@ -34,6 +36,8 @@ export type RawTweet = {
   hasImages?: boolean;
   /** Author's profile image URL. Absent for sample tweets. */
   authorAvatarUrl?: string;
+  /** Which audit source this tweet came from (absent for sample data). */
+  auditSource?: AuditSource;
 };
 
 const HANDLE = "you";

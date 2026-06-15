@@ -60,14 +60,23 @@ async function fetchSources(
       const isRepost = tweet.authorHandle.toLowerCase() !== me.username.toLowerCase();
 
       if (isRepost) {
-        if (includeReposts) all.push(tweet);
+        if (includeReposts) {
+          tweet.auditSource = "reposts";
+          all.push(tweet);
+        }
       } else if (tweet.hasImages) {
-        if (includeOwnImages) all.push(tweet);
+        if (includeOwnImages) {
+          tweet.auditSource = "own_images";
+          all.push(tweet);
+        }
       } else {
         // Not a photo tweet. Video-only tweets have a preview in mediaUrls but
         // no hasImages flag — detect and exclude (videos are unsupported).
         const isVideoOnly = !tweet.hasImages && (tweet.mediaUrls?.length ?? 0) > 0;
-        if (includeOwnText && !isVideoOnly) all.push(tweet);
+        if (includeOwnText && !isVideoOnly) {
+          tweet.auditSource = "own_text";
+          all.push(tweet);
+        }
       }
     }
   }
