@@ -171,7 +171,7 @@ describe("listLikedTweetsPage", () => {
     ]);
   });
 
-  it("parses a video tweet (hasImages: false, uses preview_image_url)", async () => {
+  it("excludes video-only liked tweets (hasImages: false, video content)", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       xLikedPage([
         {
@@ -186,11 +186,8 @@ describe("listLikedTweetsPage", () => {
     );
 
     const page = await listLikedTweetsPage("tok", "me");
-    const t = page.tweets[0]!;
-
-    expect(t.hasImages).toBe(false);
-    // Videos still get their preview frame in mediaUrls for display purposes
-    expect(t.mediaUrls).toEqual(["https://preview.x.com/v.jpg"]);
+    // Video-only tweets are excluded — matching the own-content path behaviour.
+    expect(page.tweets).toHaveLength(0);
   });
 
   it("exposes nextCursor from meta.next_token", async () => {

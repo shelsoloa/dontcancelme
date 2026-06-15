@@ -333,7 +333,9 @@ export async function listLikedTweetsPage(
     (json.includes?.media ?? []).map((m) => [m.media_key, m]),
   );
 
-  const tweets = batch.map((t) => {
+  const tweets = batch
+    .filter((t) => !tweetHasVideo(t, mediaByKey))
+    .map((t) => {
     const author = t.author_id ? users.get(t.author_id) : undefined;
     return {
       ...toRawTweet(t, author?.username ?? "i", mediaByKey, users),
