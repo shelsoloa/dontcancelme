@@ -102,7 +102,9 @@ describe("POST /api/moderation/check", () => {
     expect(body.results).toHaveLength(1);
     expect(body.results[0].id).toBe("tweet-1");
     expect(body.results[0].decision).toBe("clean");
+    // Phase 2 is enabled but no OPENAI_API_KEY → null result, degraded.
     expect(body.results[0].phase2).toBeNull();
+    expect(body.results[0].degraded).toBe(true);
   });
 
   it("returns 200 with flagged decision for profane text", async () => {
@@ -130,6 +132,29 @@ describe("POST /api/moderation/check", () => {
     expect(row).not.toHaveProperty("text");
     expect(row).not.toHaveProperty("raw_text");
     expect(row.input_length).toBe(text.length);
+    expect(row.phase1).toBeDefined();
+    // Phase 2 is enabled but no key — null persisted, degraded true.
+    expect(row.phase2).toBeNull();
+    expect(row.degraded).toBe(true);
+  });
+
+  it("persists results with degraded=true when Phase 2 has no API key", async () => {
+    setupAuth(validUser);
+    setupJobQuery({ job_id: "job-abc" });
+
+    const items = [
+      { id: "t1", text: "Hello, how are you?" },
+      { id: "t2", text: "Clean text here" },
+    ];
+    const res = await POST(makeRequest({ jobId: "job-abc", items }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.results).toHaveLength(2);
+    for (const r of body.results) {
+      expect(r.degraded).toBe(true);
+      expect(r.phase1).toBeDefined();
+      expect(r.phase2).toBeNull();
+    }
   });
 
   it("returns 200 even when admin insert fails (fail-open)", async () => {

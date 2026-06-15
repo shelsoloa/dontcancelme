@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "job not found" }, { status: 404 });
   }
 
-  const results = await moderateBatch(sanitized, { phase2: false });
+  const results = await moderateBatch(sanitized, { phase2: true });
 
   // Persist via service-role client. Never store raw text — hash only.
   const admin = createAdminClient();

@@ -78,13 +78,15 @@ function projectModLabel(
   };
 
   const firstHit = result.phase1.hits[0];
+  // "violent" can only come from Phase 2 (Surge has no violence category).
+  const detector: "gate" | "llm" = label === "violent" ? "llm" : "gate";
 
   return {
     category,
     severity,
     confidence: 0.9,
     reason: reasonMap[label] ?? label,
-    detector: "gate",
+    detector,
     evidence: firstHit
       ? { textStart: firstHit.start, textEnd: firstHit.end }
       : undefined,
