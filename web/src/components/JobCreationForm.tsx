@@ -216,7 +216,7 @@ export function JobCreationForm({
             <span className="mb-1 block text-sm">Age</span>
             <input
               type="number"
-              min={13}
+              min={18}
               max={120}
               value={age}
               onChange={(e) => setAge(e.target.value)}

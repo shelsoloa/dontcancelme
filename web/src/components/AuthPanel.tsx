@@ -36,6 +36,7 @@ export function AuthPanel({
 
   async function handleX() {
     setError(null);
+    setSubmitting(true);
     onBeforeOAuth?.();
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
@@ -47,7 +48,10 @@ export function AuthPanel({
         scopes: "users.read tweet.read tweet.write like.read like.write offline.access",
       },
     });
-    if (error) setError(error.message);
+    if (error) {
+      setSubmitting(false);
+      setError(error.message);
+    }
   }
 
   async function handleDevAuth(e: React.FormEvent) {
@@ -89,7 +93,7 @@ export function AuthPanel({
         disabled={submitting}
         className="inline-flex h-11 w-full items-center justify-center rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
       >
-        Continue with X
+        {submitting ? "Connecting to X\u2026" : "Continue with X"}
       </Button>
 
       {error && <p className="mt-3 text-sm text-crit">{error}</p>}

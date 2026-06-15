@@ -25,7 +25,9 @@ export default async function PortalLayout({
             <ThemeToggle />
           </div>
           <div className="flex items-center gap-4 text-sm text-ink-2">
-            <span className="hidden sm:inline">{user.email}</span>
+            <span className="hidden sm:inline">
+              {(user.user_metadata?.user_name as string) ?? user.email ?? "Account"}
+            </span>
             <SignOutButton />
           </div>
         </div>

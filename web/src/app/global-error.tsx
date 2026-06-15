@@ -1,4 +1,6 @@
-import type { Metadata } from "next";
+"use client";
+
+import { useEffect } from "react";
 import { Space_Grotesk, Space_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -9,7 +11,6 @@ const spaceGrotesk = Space_Grotesk({
   display: "swap",
 });
 
-// Space Mono is a static font — weight is required (no variable axis).
 const spaceMono = Space_Mono({
   variable: "--font-space-mono",
   subsets: ["latin"],
@@ -17,31 +18,17 @@ const spaceMono = Space_Mono({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "dontcancel.me",
-  description:
-    "dontcancel.me scans your X timeline and flags risky posts before they come back to haunt you.",
-  openGraph: {
-    title: "dontcancel.me",
-    description:
-      "Scan your X timeline for risky posts before they come back to haunt you.",
-    url: "https://dontcancel.me",
-    siteName: "dontcancel.me",
-    type: "website",
-  },
-  twitter: {
-    card: "summary",
-    title: "dontcancel.me",
-    description:
-      "Scan your X timeline for risky posts before they come back to haunt you.",
-  },
-};
+export default function GlobalError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
   return (
     <html
       lang="en"
@@ -49,14 +36,26 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* Anti-FOUC: apply the correct theme class before first paint. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var s=localStorage.getItem('theme');if(s==='dark'||(!s&&matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}}catch(e){}})();`,
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <main className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center px-6 py-20">
+          <h1 className="text-xl font-semibold">Something went wrong</h1>
+          <p className="mt-3 text-center text-sm text-ink-2">
+            An unexpected error occurred. Please try again.
+          </p>
+          <button
+            onClick={reset}
+            className="mt-6 inline-flex h-10 items-center justify-center rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90"
+          >
+            Try again
+          </button>
+        </main>
+      </body>
     </html>
   );
 }

@@ -26,7 +26,8 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const next = searchParams.get("next") ?? "/portal/scans";
+  const rawNext = searchParams.get("next") ?? "/portal/scans";
+  const next = rawNext.startsWith("/") ? rawNext : "/portal/scans";
 
   const supabase = await createClient();
 
