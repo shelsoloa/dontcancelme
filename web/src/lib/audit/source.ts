@@ -107,6 +107,20 @@ export class RateLimitedError extends Error {
   }
 }
 
+/**
+ * Thrown by chargeLike when the charge endpoint returns a non-OK response.
+ * Carries the HTTP status code so the engine can distinguish transient
+ * failures (5xx, network) from genuine balance exhaustion (shortfall > 0).
+ */
+export class ChargeError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ChargeError";
+    this.status = status;
+  }
+}
+
 /** Fetch one page of liked tweets. Pass cursor from the previous page's nextCursor. */
 export async function fetchLikesPage(
   jobId: string,
@@ -129,6 +143,8 @@ export async function fetchLikesPage(
  * Charge the user for one liked tweet. NOT idempotent — call only once per
  * tweet, after verifying the tweet hasn't already been processed (via cursor).
  * Returns shortfall (0 = success; >0 = balance insufficient, stop draining).
+ * Throws ChargeError on HTTP/network errors so the caller can distinguish
+ * transient failures from genuine balance exhaustion.
  */
 export async function chargeLike(
   jobId:     string,
@@ -142,7 +158,10 @@ export async function chargeLike(
   });
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
-    throw new Error(d.error ?? `Like charge failed (${res.status})`);
+    throw new ChargeError(
+      res.status,
+      d.error ?? `Like charge failed (${res.status})`,
+    );
   }
   return res.json() as Promise<ChargeResult>;
 }

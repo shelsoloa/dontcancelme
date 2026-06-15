@@ -14,7 +14,7 @@
  */
 
 import { detect } from "./detectors";
-import { fetchTweets, fetchLikesPage, chargeLike } from "./source";
+import { fetchTweets, fetchLikesPage, chargeLike, ChargeError } from "./source";
 
 /**
  * Maximum number of consecutive empty liked-tweets pages we'll follow before
@@ -97,6 +97,25 @@ function projectModLabel(
  * instead of being blocked behind a single up-front batch.
  */
 const MOD_CHUNK_SIZE = 25;
+
+/**
+ * Lazily moderate the next chunk of items starting at `nextIdx`, merging
+ * results into `target`.  Returns the new next-index (nextIdx + chunk size).
+ * Fail-open: a network error or a non-200 response leaves the target unchanged.
+ */
+async function moderateNextChunk(
+  jobId: string,
+  items: Array<{ id: string; text: string }>,
+  nextIdx: number,
+  chunkSize: number,
+  enabledSet: Set<RiskCategory>,
+  target: Map<string, Flag[]>,
+): Promise<number> {
+  const chunk = items.slice(nextIdx, nextIdx + chunkSize);
+  const chunkMap = await moderateChunk(jobId, chunk, enabledSet);
+  for (const [id, fl] of chunkMap) target.set(id, fl);
+  return nextIdx + chunk.length;
+}
 
 async function moderateChunk(
   jobId: string,
@@ -231,10 +250,7 @@ export async function runAudit(args: RunAuditArgs): Promise<AuditSnapshot> {
 
     // Fire the next moderation chunk lazily when we reach an unmoderated item.
     if (anyModEnabled && i >= modNext) {
-      const chunk = tweets.slice(modNext, modNext + MOD_CHUNK_SIZE);
-      const chunkMap = await moderateChunk(jobId, chunk, enabledSet);
-      for (const [id, fl] of chunkMap) modFlags.set(id, fl);
-      modNext += chunk.length;
+      modNext = await moderateNextChunk(jobId, tweets, modNext, MOD_CHUNK_SIZE, enabledSet, modFlags);
     }
 
     const { flags: regexFlags, redactedText } = detect(tweet.text, enabledCategories);
@@ -407,8 +423,12 @@ export async function runLikesDrain(args: LikesDrainArgs): Promise<LikesDrainRes
       let chargeResult;
       try {
         chargeResult = await chargeLike(jobId, tweet.hasImages);
-      } catch {
-        // Charge endpoint error — treat as exhaustion.
+      } catch (err) {
+        // Distinguish transient errors (5xx, network) from true exhaustion.
+        // Both halt the drain, but the call site now has diagnostic info.
+        if (err instanceof ChargeError) {
+          console.error("chargeLike failed:", err.status, err.message);
+        }
         onExhausted?.(processedCount, cursor);
         return { kind: "exhausted", snapshot: snapshot(), processedCount, nextCursor: cursor };
       }
@@ -425,10 +445,7 @@ export async function runLikesDrain(args: LikesDrainArgs): Promise<LikesDrainRes
       // Fire the next moderation chunk lazily when we reach an unmoderated item.
       // Moderation is unmetered — moderating a tweet we later can't charge is harmless.
       if (anyModEnabled && j >= pageModNext) {
-        const chunk = page.tweets.slice(pageModNext, pageModNext + MOD_CHUNK_SIZE);
-        const chunkMap = await moderateChunk(jobId, chunk, enabledSet);
-        for (const [id, fl] of chunkMap) pageMod.set(id, fl);
-        pageModNext += chunk.length;
+        pageModNext = await moderateNextChunk(jobId, page.tweets, pageModNext, MOD_CHUNK_SIZE, enabledSet, pageMod);
       }
 
       // Charged and moderated — detect and accumulate.
