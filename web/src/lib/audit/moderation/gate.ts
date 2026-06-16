@@ -1,3 +1,4 @@
+import "server-only";
 import wordlist from "./data/wordlist.json";
 import type { GateHit } from "@/lib/audit/types";
 

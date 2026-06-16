@@ -1,3 +1,4 @@
+import "server-only";
 import { getGate } from "./gate";
 import { labelsForHit, severityBucket } from "./taxonomy";
 import { moderateOpenAI, labelsFromPhase2, MIN_CONFIDENCE, type Phase2PerItem } from "./phase2";
