@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     event = getStripe().webhooks.constructEvent(body, signature, secret);
   } catch (e) {
     return NextResponse.json(
-      { error: `invalid signature: ${String(e)}` },
+      { error: "invalid_signature" },
       { status: 400 },
     );
   }
@@ -35,13 +35,17 @@ export async function POST(request: Request) {
       session.metadata?.type === "topup"
     ) {
       const admin = createAdminClient();
-      await admin.rpc("apply_credit_purchase", {
+      const { error: rpcError } = await admin.rpc("apply_credit_purchase", {
         p_session_id: session.id,
         p_payment_intent:
           typeof session.payment_intent === "string"
             ? session.payment_intent
             : null,
       });
+      if (rpcError) {
+        console.error("[webhook] apply_credit_purchase failed", rpcError.message);
+        return NextResponse.json({ error: "credit_apply_failed" }, { status: 500 });
+      }
     }
   }
 

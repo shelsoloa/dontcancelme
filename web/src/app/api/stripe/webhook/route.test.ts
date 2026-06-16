@@ -167,4 +167,29 @@ describe("POST /api/stripe/webhook", () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe("RPC error handling", () => {
+    it("returns 500 when apply_credit_purchase RPC errors", async () => {
+      const rpcMock = vi.fn().mockResolvedValue({ error: { message: "db_error", details: "", hint: "", code: "42501" } });
+      vi.mocked(getStripe).mockReturnValue(makeStripe(makeEvent()) as never);
+      vi.mocked(createAdminClient).mockReturnValue({ rpc: rpcMock } as never);
+
+      const res = await POST(makeRequest());
+
+      expect(res.status).toBe(500);
+      expect(rpcMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns 200 received:true when apply_credit_purchase succeeds", async () => {
+      const admin = makeAdminClient(); // already mocks { error: null }
+      vi.mocked(getStripe).mockReturnValue(makeStripe(makeEvent()) as never);
+      vi.mocked(createAdminClient).mockReturnValue(admin as never);
+
+      const res  = await POST(makeRequest());
+      const body = await res.json() as { received: boolean };
+
+      expect(res.status).toBe(200);
+      expect(body.received).toBe(true);
+    });
+  });
 });
