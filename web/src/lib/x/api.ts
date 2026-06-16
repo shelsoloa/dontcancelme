@@ -443,10 +443,9 @@ export async function countOwnTweets(username: string): Promise<OwnCounts> {
 /** Delete one of the authenticated user's own tweets. */
 export async function deleteTweet(
   accessToken: string,
-  userId: string,
   tweetId: string,
 ): Promise<void> {
-  await xDelete(`${X_API}/users/${userId}/tweets/${tweetId}`, accessToken);
+  await xDelete(`${X_API}/tweets/${tweetId}`, accessToken);
 }
 
 /** Unlike a tweet the authenticated user previously liked. */

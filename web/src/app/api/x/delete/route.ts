@@ -60,33 +60,38 @@ export async function POST(request: Request) {
   try {
     token = await getValidToken(connectionId);
   } catch {
+    console.error("[delete] getValidToken failed for connection:", connectionId);
     return NextResponse.json({ error: "token_unavailable" }, { status: 409 });
-  }
-
-  let me;
-  try {
-    me = await getMe(token);
-  } catch (e) {
-    const status = e instanceof XApiError ? 502 : 500;
-    return NextResponse.json({ error: "x_api_error" }, { status });
   }
 
   try {
     switch (auditSource) {
       case "own_text":
       case "own_images":
-        await deleteTweet(token, me.id, platformPostId);
+        await deleteTweet(token, platformPostId);
         break;
       case "likes":
-        await unlikeTweet(token, me.id, platformPostId);
+      case "reposts": {
+        let me;
+        try {
+          me = await getMe(token);
+        } catch (e) {
+          console.error("[delete] getMe failed:", e);
+          const status = e instanceof XApiError ? 502 : 500;
+          return NextResponse.json({ error: "x_api_error" }, { status });
+        }
+        if (auditSource === "likes") {
+          await unlikeTweet(token, me.id, platformPostId);
+        } else {
+          await unretweet(token, me.id, platformPostId);
+        }
         break;
-      case "reposts":
-        await unretweet(token, me.id, platformPostId);
-        break;
+      }
       default:
         return NextResponse.json({ error: "unknown_audit_source" }, { status: 400 });
     }
 
+    console.log("[delete] success:", auditSource, platformPostId);
     // Log success
     const admin = createAdminClient();
     await admin.from("deletion_log").insert({
@@ -97,6 +102,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (e) {
+    console.error("[delete] action failed:", auditSource, platformPostId, e);
     const status = e instanceof XApiError ? e.status : 500;
     const message = e instanceof Error ? e.message : "delete failed";
 
