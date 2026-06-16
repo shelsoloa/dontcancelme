@@ -38,17 +38,20 @@ Use **pnpm**, never npm/yarn. Always run typecheck + lint + tests before declari
   `account/`).
 - `app/api/` — `x/tweets` (ingest), `x/likes` + `x/likes/charge` (likes drain),
   `x/charge-deterministic` (upfront billing), `x/delete` (delete/unlike/unretweet),
-  `moderation/check` (Phase-1 profanity gate), `quote/`, `stripe/checkout`,
+  `moderation/check` (Phase 1 + 2 moderation — runs both phases, persists hash + results), `quote/`, `stripe/checkout`,
   `stripe/topup`, `stripe/webhook`. All `export const runtime = "nodejs"`.
 - `app/auth/callback/route.ts` — OAuth code exchange + captures X tokens.
-- `lib/audit/` — `engine.ts` (orchestration: `runAudit` + `runLikesDrain`),
+- `lib/audit/` — `engine.ts` (orchestration: `runAudit` + `runLikesDrain`; owns
+  `projectModLabel()` — maps a `ModerationLabel` + severity → `RiskCategory` + `Flag`;
+  the seam Phase-3 reason-string work touches),
   `detectors.ts` (client-side regex: PII, credentials, doxxing, substances),
   `source.ts` (`fetchTweets`, `fetchLikesPage`, billing helpers), `storage.ts`
   (localStorage), `types.ts` (`RiskCategory` enum, `AuditedPost`, `AuditSource`, etc.),
   `severity.ts` (design-language severity mapping).
-- `lib/audit/moderation/` — Phase-1 moderation pipeline:
+- `lib/audit/moderation/` — Phase 1 + 2 moderation pipeline:
   `gate.ts` (compiled Surge wordlist regex — lazy module singleton),
-  `pipeline.ts` (`moderateBatch()` — orchestrates Phase-1 gate → labels),
+  `pipeline.ts` (`moderateBatch()` — runs Phase 1 then Phase 2, reconciles labels + severity),
+  `phase2.ts` (OpenAI `omni-moderation-latest` client — hand-rolled fetch, hard 5s timeout, fail-open),
   `taxonomy.ts` (Surge category → `ModerationLabel` mapping + severity buckets),
   `data/wordlist.json` (~120 KB compiled JSON, bundled at build),
   `data/profanity_en.csv` (source CSV).
@@ -75,9 +78,13 @@ stored server-side in v1.
 
 **Detection pipeline per tweet (engine.ts):**
 1. Client-side regex (`detectors.ts`): PII, credentials, doxxing, substances
-2. Server-side moderation gate (if `nsfw`, `violence`, `hate_speech`, or `profanity`
-   categories are enabled): `POST /api/moderation/check` → `ProfanityGate` scans text
-   → `taxonomy.ts` maps Surge categories to `ModerationLabel`s
+2. Server-side moderation (if `nsfw`, `violence`, `hate_speech`, or `profanity`
+   categories are enabled): `POST /api/moderation/check` → Phase 1: `ProfanityGate`
+   scans text → `taxonomy.ts` maps Surge categories to `ModerationLabel`s; Phase 2:
+   OpenAI `omni-moderation-latest` adds `violent` / `hate` / `nsfw_sexual` signal.
+   `pipeline.ts:moderateBatch()` reconciles both (label union, max severity,
+   `SEVERE_OVERRIDE_CATEGORIES`); `engine.ts:projectModLabel()` projects each
+   `ModerationLabel` into a UI `Flag`.
 3. Merge: `flags = [...regexFlags, ...moderationFlags]`
 
 **Each post tracks its `auditSource`** (`own_text`, `own_images`, `likes`, `reposts`)
@@ -98,22 +105,36 @@ NO UNDO.") → `POST /api/x/delete` → X API (deleteTweet / unlikeTweet / unret
 on `auditSource`) → log to `deletion_log` → remove from localStorage → post disappears
 from view. No credits charged.
 
-## Moderation pipeline (Phases 1 & 2 — built)
+## Moderation pipeline (Phases 1 & 2 — built; reconciliation live inline)
 
 - **Surge wordlist regex gate** (`gate.ts`): 1,597 terms compiled to a single regex,
   longest-first alternation, digit-aware word boundaries. Supports leetspeak (`5h1t`,
   `@55`). Lazy module-scope singleton, compiled once per warm runtime.
 - **Taxonomy** (`taxonomy.ts`): maps Surge categories → `{curse, strong_curse,
   nsfw_sexual, hate}`. No `violent` label from Phase 1 — Surge has no violence category.
-- **Pipeline** (`pipeline.ts` + `phase2.ts`): `moderateBatch()` runs Phase 1 then
-  Phase 2 (`phase2: true` from the route). Phase 2 calls OpenAI `omni-moderation-latest`
-  and produces the `violent` label. `OPENAI_API_KEY` absent → fail-open (`skipped_no_key`).
-  Phase 3 (label reconciliation) is not yet built.
+- **Pipeline** (`pipeline.ts` + `phase2.ts`): `moderateBatch()` runs Phase 1 then Phase 2
+  (OpenAI `omni-moderation-latest` via `phase2.ts` — hand-rolled fetch, 5s timeout,
+  fail-open). Reconciliation is already live inside `moderateBatch()`: labels = union of
+  Phase-1 + Phase-2 sets; severity = max numeric rank across both;
+  `SEVERE_OVERRIDE_CATEGORIES` (sexual/minors, \*/threatening, violence/graphic) force
+  `severe`. `OPENAI_API_KEY` absent → Phase 2 skipped (`skipped_no_key`), Phase 1 runs alone.
 - **Persistence**: `moderation_checks` table stores SHA-256 hash of text (never raw
   text), phase1 results, labels, severity, decision. Written via service_role, read via
   RLS (owner only).
 - **Fail-open**: moderation API errors → empty results returned, audit continues with
   regex-only flags.
+
+**Phase 3 — remaining work** (label reconciliation merged labels already ship in `pipeline.ts`):
+- `engine.ts:projectModLabel()` produces flat `Flag.reason` strings today (`"Profanity"`,
+  `"Violent content"`, etc.). Phase 3's main outstanding item is richer reasons reflecting
+  gate + model agreement (e.g. `"Strong profanity (gate + model agree)"`).
+- Eval harness (`web/scripts/eval-moderation.ts`) — ~200 labeled samples → per-label
+  precision/recall — specced in `docs/moderation-plan.md §4` but never built.
+- Deferred labels: `self_harm` / `illicit` signals land in the `phase2` jsonb but are not
+  yet surfaced as `ModerationLabel`s or `RiskCategory` flags.
+- **Note:** `docs/moderation-plan.md` M3 section has stale file paths (`lib/moderation/` →
+  actual: `lib/audit/moderation/`) and describes reconciliation as a separate taxonomy
+  function — it landed inline in `pipeline.ts` instead.
 
 ## Hard constraints — do not change without being asked
 

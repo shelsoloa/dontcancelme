@@ -16,9 +16,12 @@ Detected categories:
 - drugs & alcohol.
 
 All categories are detected via **text only** — no image/media analysis. The moderation
-pipeline (Phase 1) uses a compiled Surge AI profanity wordlist with ~1,600 regex-coded
-terms (including leetspeak) to catch hate speech, slurs, sexual content, and strong
-profanity. Client-side regex covers PII, credentials, doxxing, and substances.
+pipeline runs two phases: Phase 1 uses a compiled Surge AI profanity wordlist with ~1,600
+regex-coded terms (including leetspeak) to catch hate speech, slurs, sexual content, and
+strong profanity. Phase 2 calls OpenAI `omni-moderation-latest` (free endpoint) to add
+violence, threat, and self-harm signal the wordlist can't detect. Phase 2 is optional —
+absent `OPENAI_API_KEY` the pipeline fails open and runs Phase 1 only. Client-side regex
+covers PII, credentials, doxxing, and substances.
 
 **Status / scope of v1**
 
@@ -166,6 +169,7 @@ add `NEXT_PUBLIC_` to a secret.
 | `X_CLIENT_BEARER_TOKEN` | X developer portal → *Bearer Token* (Pro tier, for full-archive counts) | same |
 | `STRIPE_SECRET_KEY` | Stripe dashboard (Test) → Developers → API keys → `sk_test_…` | Stripe dashboard (Live) → `sk_live_…` |
 | `STRIPE_WEBHOOK_SECRET` | `stripe listen` output → `whsec_…` | Stripe dashboard → Developers → Webhooks → your endpoint → *Signing secret* |
+| `OPENAI_API_KEY` | Optional. Enables Phase 2 OpenAI moderation (`omni-moderation-latest`, free endpoint); pipeline fails open / runs Phase 1 only when absent. | OpenAI dashboard → API keys |
 
 > **`APP_ENCRYPTION_KEY`** encrypts the stored X OAuth tokens. Keep it stable for a given
 > environment — rotating it makes existing stored tokens undecryptable (users must
