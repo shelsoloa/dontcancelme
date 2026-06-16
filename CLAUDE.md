@@ -12,7 +12,7 @@ Run app commands from **`web/`**; Supabase from the **repo root**.
 | Task | Command |
 | --- | --- |
 | Dev server | `pnpm dev` (in `web/`) — http://127.0.0.1:3000 |
-| Typecheck | `node_modules/.bin/tsc --noEmit -p tsconfig.json` (no `typecheck` script) |
+| Typecheck | `pnpm typecheck` (in `web/`) |
 | Lint | `pnpm lint` |
 | Build | `pnpm build` |
 | Test | `pnpm test` (vitest) |
@@ -98,15 +98,17 @@ NO UNDO.") → `POST /api/x/delete` → X API (deleteTweet / unlikeTweet / unret
 on `auditSource`) → log to `deletion_log` → remove from localStorage → post disappears
 from view. No credits charged.
 
-## Moderation pipeline (Phase 1 — built)
+## Moderation pipeline (Phases 1 & 2 — built)
 
 - **Surge wordlist regex gate** (`gate.ts`): 1,597 terms compiled to a single regex,
   longest-first alternation, digit-aware word boundaries. Supports leetspeak (`5h1t`,
   `@55`). Lazy module-scope singleton, compiled once per warm runtime.
 - **Taxonomy** (`taxonomy.ts`): maps Surge categories → `{curse, strong_curse,
   nsfw_sexual, hate}`. No `violent` label from Phase 1 — Surge has no violence category.
-- **Pipeline** (`pipeline.ts`): `moderateBatch()` runs Phase 1 only (`phase2: false`).
-  Always sets `phase2: null`. Phase 2 (OpenAI) is not yet built.
+- **Pipeline** (`pipeline.ts` + `phase2.ts`): `moderateBatch()` runs Phase 1 then
+  Phase 2 (`phase2: true` from the route). Phase 2 calls OpenAI `omni-moderation-latest`
+  and produces the `violent` label. `OPENAI_API_KEY` absent → fail-open (`skipped_no_key`).
+  Phase 3 (label reconciliation) is not yet built.
 - **Persistence**: `moderation_checks` table stores SHA-256 hash of text (never raw
   text), phase1 results, labels, severity, decision. Written via service_role, read via
   RLS (owner only).

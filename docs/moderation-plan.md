@@ -5,7 +5,7 @@
 > live. See `web/src/lib/audit/moderation/` for the code. This doc covers the remaining
 > work: Phase 2 (OpenAI moderation) and Phase 3 (reconciliation).
 
-Status: Phase 1 done. Phase 2+3 not yet built. Target: `dontcancel.me` monorepo (`web/`
+Status: Phase 1 done. Phase 2 done (commit a0c5fd8). Phase 3 not yet built. Target: `dontcancel.me` monorepo (`web/`
 Next.js 16 App Router + `supabase/`). Original plan written 2026-06-11; trimmed
 2026-06-15.
 
@@ -17,14 +17,14 @@ Next.js 16 App Router + `supabase/`). Original plan written 2026-06-11; trimmed
 |------|--------|
 | Gate regex (`gate.ts`) — compiled Surge wordlist, module singleton | Built |
 | Taxonomy (`taxonomy.ts`) — Surge category → label mapping | Built |
-| Pipeline (`pipeline.ts`) — Phase 1 only, `phase2: false`, `phase2: null` | Built |
+| Pipeline (`pipeline.ts` + `phase2.ts`) — Phase 1 + Phase 2, `phase2: true` | Built |
 | API route (`POST /api/moderation/check`) — auth, batch ≤ 50, persist, respond | Built |
 | `moderation_checks` table — stores hash, phase1, labels, severity, decision | Built |
 | Engine integration — lazy batching in `runAudit` + `runLikesDrain` | Built |
-| `phase2` column in `moderation_checks` — always `null` | Needs Phase 2 |
-| `"violent"` ModerationLabel — declared but never produced | Needs Phase 2 |
-| `detector: "llm"` — declared but never produced | Needs Phase 2 |
-| OpenAI API key / client | Not yet |
+| `phase2` column in `moderation_checks` — populated by Phase 2 | Built |
+| `"violent"` ModerationLabel — produced by `phase2.ts` | Built |
+| `detector: "llm"` — produced by Phase 2 pipeline | Built |
+| OpenAI API key / client | Built |
 
 ---
 
@@ -93,18 +93,11 @@ These are the labels Phase 2 will produce. The Surge half of the taxonomy (Phase
 
 ## 3. Implementation plan
 
-### M2 — Phase 2: OpenAI moderation on phase-1-clean text
+### M2 — Phase 2: OpenAI moderation on phase-1-clean text (DONE — commit a0c5fd8)
 
-Files to create/modify:
-
-- **`web/src/lib/moderation/provider.ts`** (new) — `fetch` client, array input, 2,500 ms
-  hard timeout (pattern from `lib/x/api.ts`), typed category/score response.
-- **`web/src/lib/moderation/pipeline.ts`** — phase-1-clean items go to one batched
-  provider call; timeout/error/no-key ⇒ `degraded = true`, decision from Phase 1 alone.
-- **`web/src/app/api/moderation/check/route.ts`** — passes the actual `OPENAI_API_KEY`
-  config; no contract change (shape was final in M1).
-- **`web/.env.example`** — add `OPENAI_API_KEY`. Vercel env set at deploy.
-- **No new migration** — `moderation_checks.phase2` column already exists.
+Shipped at `web/src/lib/audit/moderation/phase2.ts` (not `lib/moderation/provider.ts`
+as originally planned). The route passes `{ phase2: true }` and the `violent` label
+is produced. `OPENAI_API_KEY` absent → `skipped_no_key` (fail-open).
 
 ### M3 — Phase 3: reconciliation + final taxonomy
 
