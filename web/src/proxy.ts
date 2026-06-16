@@ -11,13 +11,13 @@ export async function proxy(request: NextRequest) {
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, // use publishable key var
     {
       cookies: {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
@@ -25,16 +25,19 @@ export async function proxy(request: NextRequest) {
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           );
+          Object.entries(headers ?? {}).forEach(([key, value]) => {
+            response.headers.set(key, value);
+          });
         },
       },
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Refresh/validate auth state in SSR-safe way
+  const { data: claimsData, error } = await supabase.auth.getClaims();
+  const isAuthed = !error && !!claimsData?.claims;
 
-  if (!user && request.nextUrl.pathname.startsWith("/portal")) {
+  if (!isAuthed && request.nextUrl.pathname.startsWith("/portal")) {
     const url = request.nextUrl.clone();
     url.pathname = "/start";
     return NextResponse.redirect(url);
