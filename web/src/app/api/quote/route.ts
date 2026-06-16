@@ -74,6 +74,7 @@ export async function POST(request: Request) {
     },
   );
   if (rateLimitErr) {
+    console.error("take_quote_token RPC failed:", rateLimitErr);
     return NextResponse.json({ error: "rate_limit_error" }, { status: 500 });
   }
   if (!tokenGranted) {
