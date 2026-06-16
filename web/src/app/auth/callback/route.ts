@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { captureXConnection } from "@/lib/x/oauth";
@@ -26,7 +27,13 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const rawNext = searchParams.get("next") ?? "/portal/scans";
+  // `next` is stored in a cookie by AuthPanel before the OAuth redirect because
+  // query params in redirectTo break Supabase's glob allow-list matching.
+  const cookieStore = await cookies();
+  const cookieNext = cookieStore.get("auth_next")?.value;
+  const rawNext = (cookieNext ? decodeURIComponent(cookieNext) : null)
+    ?? searchParams.get("next")
+    ?? "/portal/scans";
   const next = rawNext.startsWith("/") ? rawNext : "/portal/scans";
 
   const supabase = await createClient();
@@ -42,7 +49,9 @@ export async function GET(request: Request) {
           console.error("Failed to capture X connection:", e);
         }
       }
-      return NextResponse.redirect(`${origin}${next}`);
+      const res = NextResponse.redirect(`${origin}${next}`);
+      res.cookies.delete("auth_next");
+      return res;
     }
     console.error("exchangeCodeForSession failed:", error.message);
   } else if (tokenHash && type) {
@@ -50,7 +59,11 @@ export async function GET(request: Request) {
       type,
       token_hash: tokenHash,
     });
-    if (!error) return NextResponse.redirect(`${origin}${next}`);
+    if (!error) {
+      const res = NextResponse.redirect(`${origin}${next}`);
+      res.cookies.delete("auth_next");
+      return res;
+    }
     console.error("verifyOtp failed:", error.message);
   }
 

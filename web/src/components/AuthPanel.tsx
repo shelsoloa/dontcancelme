@@ -38,13 +38,16 @@ export function AuthPanel({
     setError(null);
     setSubmitting(true);
     onBeforeOAuth?.();
+    // Supabase's redirect allow-list glob doesn't match `?` in URLs, so query
+    // params in redirectTo cause it to fall back to the Site URL. Store `next`
+    // in a short-lived cookie and use a clean callback URL instead.
+    const secure = window.location.protocol === "https:";
+    document.cookie = `auth_next=${encodeURIComponent(next)}; path=/; max-age=300; samesite=lax${secure ? "; secure" : ""}`;
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "x",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-          next,
-        )}`,
+        redirectTo: `${window.location.origin}/auth/callback`,
         scopes: "users.read tweet.read tweet.write like.read like.write offline.access",
       },
     });
