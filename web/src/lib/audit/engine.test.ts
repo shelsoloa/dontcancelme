@@ -106,6 +106,20 @@ describe("runAudit", () => {
       }),
     ).rejects.toThrow("Audit aborted");
   });
+
+  it("preserves auditSource for own_text and reposts posts", async () => {
+    fetchTweets.mockResolvedValue([
+      { ...makeTweet("10"), auditSource: "own_text" as const },
+      { ...makeTweet("11"), auditSource: "reposts" as const },
+    ]);
+
+    const result = await runAudit({
+      jobId: "job1", userId: "user1", enabledCategories: [], live: true, stepDelayMs: 0,
+    });
+
+    expect(result.posts[0]!.auditSource).toBe("own_text");
+    expect(result.posts[1]!.auditSource).toBe("reposts");
+  });
 });
 
 // ── runLikesDrain (Phase B) ───────────────────────────────────────────────────

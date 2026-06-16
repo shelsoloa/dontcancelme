@@ -270,7 +270,7 @@ export async function runAudit(args: RunAuditArgs): Promise<AuditSnapshot> {
       }
     }
 
-      posts.push(toPost(tweet, jobId, userId, flags, redactedText, "likes"));
+      posts.push(toPost(tweet, jobId, userId, flags, redactedText, tweet.auditSource));
 
     onProgress?.(snapshot());
     if (stepDelayMs > 0) {
