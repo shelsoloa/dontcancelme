@@ -11,6 +11,15 @@ import { GET } from "@/app/auth/callback/route";
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
+vi.mock("next/headers", () => ({
+  cookies: vi.fn().mockResolvedValue({
+    get: vi.fn().mockReturnValue(undefined),
+    getAll: vi.fn().mockReturnValue([]),
+    set: vi.fn(),
+    delete: vi.fn(),
+  }),
+}));
+
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
 }));
