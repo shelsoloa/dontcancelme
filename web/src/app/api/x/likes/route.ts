@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getValidToken, resolveConnectionId } from "@/lib/x/oauth";
+import { getValidToken, resolveConnectionWithIdentity } from "@/lib/x/oauth";
 import { getMe, listLikedTweetsPage, XApiError } from "@/lib/x/api";
 
 export const runtime = "nodejs";
@@ -43,28 +43,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "job not found" }, { status: 404 });
   }
 
-  const connectionId = await resolveConnectionId(user.id, job.connection_id);
-  if (!connectionId) {
+  const conn = await resolveConnectionWithIdentity(user.id, job.connection_id);
+  if (!conn) {
     return NextResponse.json({ error: "no_connection" }, { status: 409 });
   }
 
   let token: string;
   try {
-    token = await getValidToken(connectionId);
+    token = await getValidToken(conn.id);
   } catch {
     return NextResponse.json({ error: "token_unavailable" }, { status: 409 });
   }
 
-  let me;
-  try {
-    me = await getMe(token);
-  } catch (e) {
-    const status = e instanceof XApiError ? 502 : 500;
-    return NextResponse.json({ error: "x_api_error" }, { status });
-  }
+  // Use stored X user ID from the connection row; fall back to a live getMe only
+  // if the row pre-dates identity storage (shouldn't happen for new connections).
+  const userId = conn.platformUserId || await getMe(token).then((m) => m.id);
 
   try {
-    const page = await listLikedTweetsPage(token, me.id, cursor);
+    const page = await listLikedTweetsPage(token, userId, cursor);
     return NextResponse.json(page);
   } catch (e) {
     if (e instanceof XApiError && e.status === 429) {

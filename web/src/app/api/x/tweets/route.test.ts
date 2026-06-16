@@ -18,8 +18,8 @@ import { GET } from "@/app/api/x/tweets/route";
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/supabase/admin",  () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/x/oauth",         () => ({
-  resolveConnectionId: vi.fn(),
-  getValidToken:       vi.fn(),
+  resolveConnectionWithIdentity: vi.fn(),
+  getValidToken:                 vi.fn(),
 }));
 vi.mock("@/lib/x/api", () => ({
   getMe:           vi.fn(),
@@ -34,14 +34,17 @@ vi.mock("@/lib/x/api", () => ({
 
 const { createClient }      = await import("@/lib/supabase/server");
 const { createAdminClient } = await import("@/lib/supabase/admin");
-const { resolveConnectionId, getValidToken } = await import("@/lib/x/oauth");
+const { resolveConnectionWithIdentity, getValidToken } = await import("@/lib/x/oauth");
 const { getMe, listTimeline, listLikedTweets } = await import("@/lib/x/api");
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-const USER    = { id: "user-abc" };
-const ME      = { id: "x-uid", username: "testuser", tweetCount: 100, likeCount: 50 };
-const TWEET   = { id: "1", text: "hi", createdAt: "2024-01-01T00:00:00Z", authorHandle: "testuser", url: "https://x.com/testuser/status/1", hasImages: false };
+const USER  = { id: "user-abc" };
+const ME    = { id: "x-uid", username: "testuser", tweetCount: 100, likeCount: 50 };
+const TWEET = { id: "1", text: "hi", createdAt: "2024-01-01T00:00:00Z", authorHandle: "testuser", url: "https://x.com/testuser/status/1", hasImages: false };
+
+const CONN_FULL    = { id: "conn1", platformUserId: "x-uid", handle: "testuser" };
+const CONN_PARTIAL = { id: "conn1", platformUserId: "", handle: "" };
 
 function makeSupabaseClient(sources: string[]) {
   const mockQuery = {
@@ -75,7 +78,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Job is charged by default; the 402 test overrides this.
   vi.mocked(createAdminClient).mockReturnValue(makeAdminClient({ job_id: "job1" }) as never);
-  vi.mocked(resolveConnectionId).mockResolvedValue("conn1");
+  vi.mocked(resolveConnectionWithIdentity).mockResolvedValue(CONN_FULL);
   vi.mocked(getValidToken).mockResolvedValue("access_token");
   vi.mocked(getMe).mockResolvedValue(ME);
   vi.mocked(listTimeline).mockResolvedValue([TWEET]);
@@ -83,6 +86,42 @@ beforeEach(() => {
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe("GET /api/x/tweets — getMe fallback behaviour", () => {
+  it("does NOT call getMe when both platformUserId and handle are set", async () => {
+    vi.mocked(createClient).mockResolvedValue(makeSupabaseClient(["own_text"]) as never);
+    vi.mocked(resolveConnectionWithIdentity).mockResolvedValue(CONN_FULL);
+
+    const res = await GET(makeRequest());
+    expect(res.status).toBe(200);
+
+    expect(getMe).not.toHaveBeenCalled();
+  });
+
+  it("DOES call getMe when platformUserId is empty (legacy row)", async () => {
+    vi.mocked(createClient).mockResolvedValue(makeSupabaseClient(["own_text"]) as never);
+    vi.mocked(resolveConnectionWithIdentity).mockResolvedValue(CONN_PARTIAL);
+
+    const res = await GET(makeRequest());
+    expect(res.status).toBe(200);
+
+    expect(getMe).toHaveBeenCalledOnce();
+  });
+
+  it("DOES call getMe when handle is empty but platformUserId is set", async () => {
+    vi.mocked(createClient).mockResolvedValue(makeSupabaseClient(["own_text"]) as never);
+    vi.mocked(resolveConnectionWithIdentity).mockResolvedValue({
+      id: "conn1",
+      platformUserId: "x-uid",
+      handle: "",
+    });
+
+    const res = await GET(makeRequest());
+    expect(res.status).toBe(200);
+
+    expect(getMe).toHaveBeenCalledOnce();
+  });
+});
 
 describe("GET /api/x/tweets — source selection", () => {
   it("only tweets: calls listTimeline and NOT listLikedTweets", async () => {
@@ -179,7 +218,7 @@ describe("GET /api/x/tweets — source selection", () => {
 
   it("returns 409 when no X connection is found for the user", async () => {
     vi.mocked(createClient).mockResolvedValue(makeSupabaseClient(["own_text"]) as never);
-    vi.mocked(resolveConnectionId).mockResolvedValue(null);
+    vi.mocked(resolveConnectionWithIdentity).mockResolvedValue(null);
 
     const res = await GET(makeRequest());
     expect(res.status).toBe(409);

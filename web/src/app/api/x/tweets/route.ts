@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getValidToken, resolveConnectionId } from "@/lib/x/oauth";
+import { getValidToken, resolveConnectionWithIdentity } from "@/lib/x/oauth";
 import {
   getMe,
   listTimeline,
@@ -136,24 +136,30 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "payment_required" }, { status: 402 });
   }
 
-  const connectionId = await resolveConnectionId(user.id, job.connection_id);
-  if (!connectionId) {
+  const conn = await resolveConnectionWithIdentity(user.id, job.connection_id);
+  if (!conn) {
     return NextResponse.json({ error: "no_connection" }, { status: 409 });
   }
 
   let token: string;
   try {
-    token = await getValidToken(connectionId);
+    token = await getValidToken(conn.id);
   } catch {
     return NextResponse.json({ error: "token_unavailable" }, { status: 409 });
   }
 
-  let me;
-  try {
-    me = await getMe(token);
-  } catch (e) {
-    const status = e instanceof XApiError ? 502 : 500;
-    return NextResponse.json({ error: "x_api_error" }, { status });
+  // Use stored identity from the connection row; fall back to a live getMe only
+  // if the row pre-dates identity storage (empty platformUserId or handle).
+  let me: XMe;
+  if (conn.platformUserId && conn.handle) {
+    me = { id: conn.platformUserId, username: conn.handle, tweetCount: 0, likeCount: 0 };
+  } else {
+    try {
+      me = await getMe(token);
+    } catch (e) {
+      const status = e instanceof XApiError ? 502 : 500;
+      return NextResponse.json({ error: "x_api_error" }, { status });
+    }
   }
 
   try {

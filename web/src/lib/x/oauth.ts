@@ -126,6 +126,51 @@ export async function captureXConnection(session: Session): Promise<void> {
   });
 }
 
+export type ConnectionIdentity = {
+  id: string;
+  platformUserId: string;
+  handle: string;
+};
+
+/**
+ * Like `resolveConnectionId` but also returns the stored platform identity
+ * (X numeric user ID and handle) so callers can skip a live `getMe` call.
+ */
+export async function resolveConnectionWithIdentity(
+  userId: string,
+  jobConnectionId?: string | null,
+): Promise<ConnectionIdentity | null> {
+  const admin = createAdminClient();
+  if (jobConnectionId) {
+    const { data } = await admin
+      .from("connections")
+      .select("id, platform_user_id, handle")
+      .eq("id", jobConnectionId)
+      .maybeSingle();
+    if (!data) return null;
+    return {
+      id: data.id,
+      platformUserId: data.platform_user_id ?? "",
+      handle: data.handle ?? "",
+    };
+  }
+  const { data } = await admin
+    .from("connections")
+    .select("id, platform_user_id, handle")
+    .eq("user_id", userId)
+    .eq("platform", "x")
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    id: data.id,
+    platformUserId: data.platform_user_id ?? "",
+    handle: data.handle ?? "",
+  };
+}
+
 /** Resolve the connection to use for a job (job's own, else newest active). */
 export async function resolveConnectionId(
   userId: string,
