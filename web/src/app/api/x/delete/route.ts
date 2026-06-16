@@ -123,8 +123,15 @@ export async function POST(request: Request) {
       );
     }
     if (e instanceof XApiError && e.status === 404) {
-      // Already deleted — treat as success so the UI removes it.
-      return NextResponse.json({ success: true });
+      if (auditSource === "own_text" || auditSource === "own_images") {
+        // Tweet genuinely no longer exists — treat as success.
+        return NextResponse.json({ success: true });
+      }
+      // For likes/reposts: 404 means "wasn't liked/reposted" — not a deletion.
+      return NextResponse.json(
+        { success: false, error: "not_found" },
+        { status: 404 },
+      );
     }
 
     return NextResponse.json(
