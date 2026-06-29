@@ -270,18 +270,3 @@ export type DeletionLogEntry = {
   deletedAt: string;
 };
 
-/**
- * Reusable per-user demographic profile ("qualifying information") collected at
- * intake. One row per user; mirrors the `profiles` table.
- */
-export type Profile = {
-  userId: string;
-  age?: number;
-  gender?: string;
-  race?: string;
-  sexualOrientation?: string;
-  country?: string;
-  /** ISO 8601 timestamps. */
-  createdAt: string;
-  updatedAt: string;
-};

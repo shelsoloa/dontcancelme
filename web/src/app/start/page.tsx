@@ -3,10 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import {
-  JobCreationForm,
-  type JobFormInitial,
-} from "@/components/JobCreationForm";
+import { JobCreationForm } from "@/components/JobCreationForm";
 import { AuthPanel } from "@/components/AuthPanel";
 import { startAudit, type StartAuditInput } from "./actions";
 
@@ -18,7 +15,6 @@ export default function StartPage() {
 
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [initial, setInitial] = useState<JobFormInitial | undefined>();
   const [pendingPayload, setPendingPayload] = useState<StartAuditInput | null>(
     null,
   );
@@ -27,8 +23,8 @@ export default function StartPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // On load: resolve session, prefill from profile, and finish a pending scan
-  // if we just came back from an auth redirect.
+  // On load: resolve session and finish a pending scan if we just came back
+  // from an auth redirect.
   useEffect(() => {
     const supabase = createClient();
     (async () => {
@@ -40,25 +36,6 @@ export default function StartPage() {
       } = await supabase.auth.getUser();
       if (user) {
         setUserId(user.id);
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        if (profile) {
-          setInitial({
-            age: profile.age != null ? String(profile.age) : "",
-            gender: profile.gender ?? "",
-            race: profile.race
-              ? profile.race
-                  .split(",")
-                  .map((s: string) => s.trim())
-                  .filter(Boolean)
-              : [],
-            orientation: profile.sexual_orientation ?? "",
-            country: profile.country ?? "",
-          });
-        }
         const pending = sessionStorage.getItem(PENDING_KEY);
         if (pending) {
           try {
@@ -112,12 +89,10 @@ export default function StartPage() {
     <main className="mx-auto w-full max-w-xl flex-1 px-6 py-12">
       <h1 className="text-2xl font-semibold tracking-tight">Start a scan</h1>
       <p className="mt-2 text-sm text-ink-2">
-        Tell us a bit about you so we can judge what counts as risky, then pick
-        what to scan for.
+        Pick what to scan for and set your options.
       </p>
 
       <JobCreationForm
-        initial={initial}
         submitting={submitting}
         error={error}
         onSubmit={handleSubmit}
