@@ -48,22 +48,28 @@ export default function Home() {
         {/* Hero */}
         <section className="mx-auto w-full max-w-5xl px-6 pb-16 pt-20 sm:pt-28">
           <h1 className="text-5xl font-bold leading-none tracking-tight sm:text-8xl">
-            dontcancel<span className="text-primary">.me</span>
+            Your old tweets are a liability.
           </h1>
           <h2 className="mt-6 max-w-2xl text-xl font-semibold tracking-tight text-ink-2 sm:text-2xl">
-            Find the posts that put you at risk <em>before</em> the internet
-            does.
+            dontcancel.me scans your entire X history, surfaces the ones that
+            could get you fired or canceled, and deletes them in one click.
           </h2>
           <p className="mt-4 max-w-xl text-base text-ink-2">
-            Scan your X account for personal info, credentials, hate speech, and
-            other risky content — then decide what to clean up.
+            Two-phase AI moderation catches what keyword filters miss. Your
+            tweet text never leaves your browser. First 100 posts free.
           </p>
-          <div className="mt-10">
+          <div className="mt-8 flex flex-wrap items-center gap-4">
             <Link
               href="/start"
               className="inline-flex h-12 items-center justify-center rounded-full bg-primary px-8 text-base font-semibold text-primary-ink transition-opacity hover:opacity-90"
             >
               Clean it up now
+            </Link>
+            <Link
+              href="/how-it-works"
+              className="inline-flex h-12 items-center justify-center rounded-full border border-line px-8 text-base font-semibold text-ink transition-opacity hover:opacity-70"
+            >
+              See how it works
             </Link>
           </div>
         </section>
