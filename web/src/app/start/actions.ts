@@ -7,16 +7,7 @@ import {
   type AuditSource,
 } from "@/lib/audit/types";
 
-type ProfileInput = {
-  age?: number;
-  gender?: string;
-  race?: string;
-  sexualOrientation?: string;
-  country?: string;
-};
-
 export type StartAuditInput = {
-  profile: ProfileInput;
   sources: AuditSource[];
   categories: RiskCategory[];
   /** Maximum number of own posts to scan. Absent means no limit (API max). */
@@ -73,16 +64,6 @@ export async function startAudit(
       };
     }
   }
-
-  const { error: profileErr } = await supabase.from("profiles").upsert({
-    user_id: user.id,
-    age: input.profile.age ?? null,
-    gender: input.profile.gender || null,
-    race: input.profile.race || null,
-    sexual_orientation: input.profile.sexualOrientation || null,
-    country: input.profile.country || null,
-  });
-  if (profileErr) return { error: profileErr.message };
 
   // Link the user's X connection (if any) so the scan can ingest live tweets.
   const { data: connection } = await supabase
