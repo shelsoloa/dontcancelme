@@ -1123,6 +1123,20 @@ function ResultsView({
     setActiveCategories(new Set(allCats));
   }
 
+  function handleShare() {
+    const flagged = result.progress.flagged;
+    const text = `I just scanned my X history with dontcancel.me and found ${flagged} post${flagged === 1 ? "" : "s"} I should probably delete. Scan yours free:`;
+    const url = "https://dontcancel.me";
+    const intentUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+    if (typeof navigator !== "undefined" && navigator.share) {
+      navigator.share({ text, url }).catch(() => {
+        window.open(intentUrl, "_blank", "noopener,noreferrer,width=550,height=420");
+      });
+    } else {
+      window.open(intentUrl, "_blank", "noopener,noreferrer,width=550,height=420");
+    }
+  }
+
   const severityBuckets: Record<DesignSeverity, number> = {
     clear: 0,
     low: 0,
@@ -1188,6 +1202,26 @@ function ResultsView({
           {meta.enabledCategories.map((c) => RISK_LABELS[c]).join(", ") || "—"}
         </Row>
       </dl>
+
+      {live && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleShare}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-medium text-primary-ink transition-opacity hover:opacity-90"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L2.04 2.25H8.27l4.261 5.624 5.713-5.624zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+            </svg>
+            Share your results
+          </button>
+        </div>
+      )}
 
       {statStripItems.length > 0 && (
         <div className="space-y-2">
