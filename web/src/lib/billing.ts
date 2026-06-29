@@ -11,7 +11,7 @@
  */
 
 /** Lifetime free-post allowance per user. Mirrors v_free_limit in charge_deterministic. */
-export const FREE_TWEET_LIMIT = 500;
+export const FREE_TWEET_LIMIT = 100;
 
 /** Credits per US dollar (rate: $0.01 / credit). */
 export const CREDITS_PER_DOLLAR = 100;
