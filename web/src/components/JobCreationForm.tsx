@@ -29,7 +29,7 @@ export type JobFormInitial = {
 export function JobCreationForm({
   initial,
   submitting = false,
-  submitLabel = "Get quote",
+  submitLabel = "Run a scan",
   error,
   onSubmit,
 }: {
