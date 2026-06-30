@@ -147,14 +147,14 @@ export default function QuoteView({ jobId }: { jobId: string }) {
         ← Back to scans
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">
-        Review your quote
+        Review your scan
       </h1>
       <p className="mt-2 text-sm text-ink-2">
         Pay once — your credits are yours to keep and use across scans.
       </p>
 
       {phase.kind === "loading" && (
-        <p className="mt-8 text-sm text-ink-2">Computing your quote…</p>
+        <p className="mt-8 text-sm text-ink-2">Computing your scan…</p>
       )}
 
       {phase.kind === "error" && (
@@ -171,9 +171,9 @@ export default function QuoteView({ jobId }: { jobId: string }) {
 
       {phase.kind === "rate_limited" && (
         <div className="mt-8 rounded-xl border border-line p-6">
-          <h2 className="text-base font-semibold">Quote limit reached</h2>
+          <h2 className="text-base font-semibold">Too many requests</h2>
           <p className="mt-2 text-sm text-ink-2">
-            You&apos;ve requested too many quotes in a short window. Try again
+            You&apos;ve started too many scans in a short window. Try again
             in {phase.retryAfterSeconds} seconds.
           </p>
         </div>
